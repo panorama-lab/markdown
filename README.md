@@ -16,17 +16,11 @@ It keeps standard Markdown for everyday markup and adds directives for citations
 
 ## Download
 
-![](<>)
+Download the latest editor build from the [GitHub releases page](https://github.com/panorama-lab/markdown/releases).
 
-Download the editor in release
+## Roadmap
 
-open source roadmap
-we will release the parser, ast, renderer when it's getting a bit stable, currently we integerate a APA style PDF renderer in the editor app.
-follow the issue for feedback and progress https://github.com/panorama-lab/markdown/issues
-
-Download the latest application build from the GitHub releases page:
-
-https://github.com/panorama-lab/markdown/releases
+The parser, AST, and renderer will be open sourced once the API stabilizes. The editor currently integrates an APA-style PDF renderer. Follow [the issues](https://github.com/panorama-lab/markdown/issues) for updates and to share feedback.
 
 ## Specification
 
@@ -34,8 +28,8 @@ The full document format, package layout, parser pipeline, AST shape, and render
 
 ## Community
 
-- Report bugs or request features: https://github.com/panorama-lab/markdown/issues
-- Join the Discord server: https://discord.gg/PtgNPuHMFs
+- Report bugs or request features on [GitHub Issues](https://github.com/panorama-lab/markdown/issues)
+- Join the [Discord server](https://discord.gg/PtgNPuHMFs)
 
 ## License
 
