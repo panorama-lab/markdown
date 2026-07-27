@@ -19,7 +19,7 @@ It is designed to be friendly to LLMs while staying simple and comfortable for p
 
 The specification is still in progress, but the current format is documented and ready to explore.
 
-Each paper lives in a flat directory of files. The full directory layout and Markdown syntax are defined in **[SPEC.md](SPEC.md)**.
+Each paper lives in a flat directory of files. The full directory layout and Markdown syntax are defined in **[SPEC.md](packages/markdown/SPEC.md)**.
 
 ## Typesetting
 
