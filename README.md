@@ -1,30 +1,37 @@
 # Panorama Markdown
 
-Panorama Markdown is a small dialect for writing academic papers and for representing parsed papers in Markdown.
+> [!NOTE]
+> This is preview software — feedback is welcome.
 
-It keeps standard Markdown for everyday markup and adds directives for citations, references, figures, tables, cross-references, and page breaks. The same format works in both directions: author a paper in Markdown, or convert an existing paper into this structure.
+Panorama Markdown is a small dialect for writing academic papers and for representing parsed PDF papers in Markdown.
 
-## Features
+The main idea is to be LLM-friendly while staying simple enough for humans to write.
+
+## Built on Markdown
 
 - **Standard Markdown** for headings, paragraphs, lists, links, footnotes, and emphasis
 - **YAML front matter** for title, authors, abstract, and keywords
 - **Citations** via `:cite` and a `::references` block backed by BibTeX
-- **Figures and tables** as leaf directives with package-relative assets
+- **Figures and tables** are not embedded in Markdown but imported with directive syntax
 - **Cross-references** via `:ref` to labeled sections, figures, and tables
-- **Page breaks** via `::pagebreak`
-- **Parse → AST → render** pipeline for HTML, PDF, DOCX, and LaTeX
-
-## Download
-
-Download the latest editor build from the [GitHub releases page](https://github.com/panorama-lab/markdown/releases).
-
-## Roadmap
-
-The parser, AST, and renderer will be open sourced once the API stabilizes. The editor currently integrates an APA-style PDF renderer. Follow [the issues](https://github.com/panorama-lab/markdown/issues) for updates and to share feedback.
 
 ## Specification
 
-The full document format, package layout, parser pipeline, AST shape, and renderer behavior are defined in **[SPEC.md](SPEC.md)**.
+The specification is still in progress.
+
+A paper is a flat directory of files. The full directory layout and Markdown syntax are defined in **[SPEC.md](SPEC.md)**.
+
+## Typesetting
+
+Markdown handles the content; layout and styling are kept separate. The current tooling can export APA-style PDFs, with more styling options planned.
+
+## Editor
+
+![Panorama Markdown screenshot](assets/screenshot.png)
+
+Download the latest editor build from the [GitHub releases page](https://github.com/panorama-lab/markdown/releases).
+
+After downloading, open or create a paper directory to edit and export PDFs. Click the Agent button in the top-right to copy prompts to your agent (Codex, Claude) and collaborate with it.
 
 ## Community
 
@@ -33,4 +40,4 @@ The full document format, package layout, parser pipeline, AST shape, and render
 
 ## License
 
-See [LICENSE](LICENSE).
+Apache 2.0
