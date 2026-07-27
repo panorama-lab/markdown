@@ -1,16 +1,15 @@
 {
   "name": "@panorama-lab/markdown",
-  "version": "0.2.4",
-  "description": "A starter for creating a TypeScript package.",
-  "homepage": "https://github.com/author/library#readme",
+  "version": "0.2.5",
+  "description": "A lightweight dialect for writing academic papers and representing parsed PDF papers in Markdown.",
+  "homepage": "https://github.com/panorama-lab/markdown#readme",
   "bugs": {
-    "url": "https://github.com/author/library/issues"
+    "url": "https://github.com/panorama-lab/markdown/issues"
   },
-  "license": "MIT",
-  "author": "Author Name <author.name@mail.com>",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/author/library.git"
+    "url": "git+https://github.com/panorama-lab/markdown.git"
   },
   "files": [
     "dist"
