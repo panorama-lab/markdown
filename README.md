@@ -27,11 +27,15 @@ Markdown defines the content, while layout and styling stay separate. The curren
 
 ## Editor
 
-![Panorama Markdown screenshot](assets/screenshot.png)
-
 Download the latest editor build from the [GitHub releases page](https://github.com/panorama-lab/markdown/releases).
 
-After downloading, open or create a paper directory to start editing and exporting PDFs. Use the Agent button in the top-right to copy prompts to your agent (Codex, Claude) and collaborate directly from the agent.
+After downloading, open or create a paper directory to start editing and exporting PDFs.
+
+![Panorama Markdown screenshot](assets/screenshot.png)
+
+![Add Agent screenshot](assets/screenshot-add-agent.png)
+
+Use the Agent button in the top-right to copy prompts to your agent (Codex, Claude) and collaborate directly from the agent.
 
 ## Community
 
