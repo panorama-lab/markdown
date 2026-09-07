@@ -51,6 +51,124 @@ export function render(ast: Document, options?: RenderOptions): ReactElement {
   return renderSingleColumn(ast, style);
 }
 
+export function countWords(ast: Document, options?: RenderOptions): number {
+  const style = resolveStyle(ast, options);
+  const text: string[] = [];
+
+  if (ast.meta) {
+    if (ast.meta.title) text.push(ast.meta.title);
+    if (ast.meta.authors) {
+      text.push(
+        ast.meta.authors
+          .map(
+            (author) =>
+              `${author.name}${author.corresponding ? "*" : ""}${author.affiliation ? ` (${author.affiliation})` : ""}`,
+          )
+          .join(", "),
+      );
+    }
+    if (ast.meta.abstract) text.push("Abstract", ast.meta.abstract);
+    if (ast.meta.keywords?.length) text.push(style.keywordsLabel, ast.meta.keywords.join(", "));
+  }
+
+  for (const node of ast.body) appendBlockText(node, text, style);
+  for (const entry of ast.bibliography) {
+    if (ast.body.some((node) => node.type === "references")) text.push(formatBibEntry(entry));
+  }
+
+  return countTextWords(text.join(" "));
+}
+
+function countTextWords(text: string): number {
+  return text.match(/[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*/gu)?.length ?? 0;
+}
+
+function appendBlockText(node: BlockNode, text: string[], style: ResolvedStyle): void {
+  switch (node.type) {
+    case "heading":
+    case "paragraph":
+      text.push(inlinePdfText(node.children, style));
+      return;
+    case "list":
+      for (const item of node.children) {
+        for (const child of item.children) appendBlockText(child, text, style);
+      }
+      return;
+    case "blockquote":
+      for (const child of node.children) appendBlockText(child, text, style);
+      return;
+    case "code":
+      text.push(node.value);
+      return;
+    case "figure":
+      if (node.caption.length > 0) text.push(inlinePdfText(node.caption, style));
+      return;
+    case "tableDirective":
+      if (node.body) {
+        for (const child of node.body) appendBlockText(child, text, style);
+      }
+      text.push(inlinePdfText(node.caption, style));
+      return;
+    case "table":
+      appendTableRowText(node.header, text, style);
+      for (const row of node.rows) appendTableRowText(row, text, style);
+      return;
+    case "tableOfContents":
+      if (node.title) text.push(node.title);
+      for (const entry of style.toc.filter((entry) => entry.depth <= node.levels))
+        text.push(entry.text);
+      return;
+    case "footnoteDefinition":
+      for (const child of node.children) appendBlockText(child, text, style);
+      return;
+    case "references":
+    case "thematicBreak":
+    case "pagebreak":
+      return;
+  }
+}
+
+function appendTableRowText(row: TableRowNode, text: string[], style: ResolvedStyle): void {
+  for (const cell of row.children) text.push(inlinePdfText(cell.children, style));
+}
+
+function inlinePdfText(nodes: InlineNode[], style: ResolvedStyle): string {
+  return nodes
+    .map((node) => {
+      switch (node.type) {
+        case "text":
+        case "inlineCode":
+          return node.value;
+        case "strong":
+        case "emphasis":
+        case "link":
+        case "strikethrough":
+        case "addition":
+        case "highlight":
+          return style.reviewMode === "clean" && node.type === "addition"
+            ? ""
+            : inlinePdfText(node.children, style);
+        case "substitution":
+          return style.reviewMode === "markup"
+            ? `${inlinePdfText(node.old, style)} ${inlinePdfText(node.new, style)}`
+            : inlinePdfText(style.reviewMode === "clean" ? node.old : node.new, style);
+        case "break":
+          return "\n";
+        case "cite":
+          return `[${node.keys.join(", ")}]`;
+        case "ref":
+          return node.label;
+        case "footnoteRef":
+          return node.id;
+        case "comment":
+          return style.reviewMode === "markup" ? ` [comment: ${node.text}]` : "";
+        case "deletion":
+          return style.reviewMode === "accepted" ? "" : inlinePdfText(node.children, style);
+      }
+    })
+    .join("");
+}
+
 function renderSingleColumn(ast: Document, style: ResolvedStyle): ReactElement {
   const footnoteDefs = collectFootnotes(ast.body);
 

@@ -79,7 +79,7 @@ A heading may carry a stable id for cross-references:
 
 ## Paragraphs and emphasis
 
-Write paragraphs as standard Markdown, separated by a single blank line. Standard inline markup is supported:
+Write each paragraph on a single line; do not wrap paragraphs manually. Separate paragraphs with a single blank line. Multiple consecutive blank lines are normalized to a single blank line. Standard inline markup is supported:
 
 ```md
 **strong text**
