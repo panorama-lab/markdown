@@ -447,6 +447,18 @@ export function parseInlines(source: string): InlineNode[] {
       }
     }
 
+    if (source[i] === "[") {
+      const numericCite = /^\[(\d+(?:\s*,\s*\d+)*)\]/.exec(source.slice(i));
+      if (numericCite && source[i + numericCite[0].length] !== "(") {
+        nodes.push({
+          type: "cite",
+          keys: numericCite[1].split(",").map((key) => key.trim()),
+        });
+        i += numericCite[0].length;
+        continue;
+      }
+    }
+
     if (source.startsWith(":ref[", i)) {
       const end = source.indexOf("]", i + 5);
       if (end !== -1) {

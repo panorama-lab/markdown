@@ -194,6 +194,17 @@ describe("citations and references", () => {
     expect(doc.bibliography.map((e) => e.key)).toEqual(["wang2023", "wang2024"]);
   });
 
+  it("parses numeric inline citations", () => {
+    const doc = parse("Prior work [1] and follow-up work [2, 3].");
+    const p = doc.body[0];
+    expect(p.type).toBe("paragraph");
+    if (p.type !== "paragraph") return;
+    expect(p.children.filter((c) => c.type === "cite")).toEqual([
+      { type: "cite", keys: ["1"] },
+      { type: "cite", keys: ["2", "3"] },
+    ]);
+  });
+
   it("warns on unknown cite keys when bib is present", () => {
     const doc = parse(":cite[missing]\n", { files: { "references.bib": bib } });
     expect(doc.warnings.some((w) => w.code === "unknown-cite-key")).toBe(true);
