@@ -29,6 +29,8 @@ const tree = render(parse(source), { reviewMode: "markup" });
 
 `reviewMode`: `"markup"` | `"clean"` | `"accepted"`.
 
+Citations and the references list render in APA style by default (`citationStyle: "apa"`), e.g. `(Smith, 2024)` and `Smith, J. (2024). Title. Journal, 12(3), 45–50.`.
+
 ## PDF render
 
 ```ts

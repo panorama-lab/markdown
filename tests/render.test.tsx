@@ -129,6 +129,66 @@ Body
     expect(comment.props["data-review-id"]).toBe("1");
   });
 
+  it("renders APA in-text citations by default", () => {
+    const ast = parse("Prior work :cite[smith2024].\n", {
+      files: {
+        "references.bib": `@article{smith2024,\n  author = {Smith, John},\n  title = {A Study},\n  journal = {Journal},\n  year = {2024}\n}\n`,
+      },
+    });
+    const tree = render(ast) as { props: { children: unknown[] } };
+    const children = Array.isArray(tree.props.children)
+      ? tree.props.children.flat()
+      : [tree.props.children];
+    const paragraph = children.find(
+      (c) => isValidElement(c) && (c as { type: string }).type === "p",
+    ) as { props: { children: unknown[] } };
+    const cite = paragraph.props.children.find(
+      (c) => isValidElement(c) && (c as { type: string }).type === "cite",
+    ) as { props: { children: unknown[] } };
+    expect(cite).toBeTruthy();
+    const link = cite.props.children.find(
+      (c) => isValidElement(c) && (c as { type: string }).type === "a",
+    ) as { props: { children: unknown; href: string } };
+    expect(link.props.children).toBe("Smith, 2024");
+    expect(link.props.href).toBe("#ref-smith2024");
+  });
+
+  it("renders APA references by default", () => {
+    const ast = parse("Text :cite[smith2024].\n\n::references\n", {
+      files: {
+        "references.bib": `@article{smith2024,\n  author = {Smith, John},\n  title = {A Study},\n  journal = {Journal},\n  year = {2024}\n}\n`,
+      },
+    });
+    const tree = render(ast) as { props: { children: unknown[] } };
+    const children = Array.isArray(tree.props.children)
+      ? tree.props.children.flat()
+      : [tree.props.children];
+    const section = children.find(
+      (c) =>
+        isValidElement(c) &&
+        (c as { props: Record<string, unknown> }).props["data-references"] === true,
+    ) as { props: { children: unknown[] } };
+    const list = section.props.children.find(
+      (c) => isValidElement(c) && (c as { type: string }).type === "ol",
+    ) as { props: { children: unknown[] } };
+    const item = (
+      Array.isArray(list.props.children) ? list.props.children[0] : list.props.children
+    ) as { props: { id: string; children: unknown[] } };
+    expect(item.props.id).toBe("ref-smith2024");
+    const flatten = (nodes: unknown[]): string =>
+      nodes
+        .map((node) => {
+          if (typeof node === "string") return node;
+          if (isValidElement(node)) {
+            const inner = (node.props as { children?: unknown }).children;
+            return flatten(Array.isArray(inner) ? inner : inner ? [inner] : []);
+          }
+          return "";
+        })
+        .join("");
+    expect(flatten(item.props.children)).toBe("Smith, J. (2024). A Study. Journal.");
+  });
+
   it("renders table of contents with nested heading links", () => {
     const tree = render(
       parse(`# Introduction

@@ -1,2 +1,2 @@
 export { render } from "../renderer/react.ts";
-export type { RenderOptions } from "../ast.ts";
+export type { CitationStyleName, RenderOptions } from "../ast.ts";

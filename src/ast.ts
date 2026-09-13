@@ -238,6 +238,8 @@ export type ParseOptions = {
 
 export type ReviewMode = "markup" | "clean" | "accepted";
 
+export type CitationStyleName = "apa";
+
 export type PageSize =
   | "LETTER"
   | "LEGAL"
@@ -273,6 +275,7 @@ export type HeadingFormat = {
 export type RenderOptions = {
   assets?: Record<string, string>;
   reviewMode?: ReviewMode;
+  citationStyle?: CitationStyleName;
   pageSize?: PageSize;
   margin?: PaperMargin;
   fontFamily?: string;

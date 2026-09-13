@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { createElement, Fragment } from "react";
 
 import type {
+  BibEntry,
   BlockNode,
   Document,
   InlineNode,
@@ -11,14 +12,25 @@ import type {
   TableRowNode,
 } from "../ast.ts";
 
+import { resolveCitationStyle, type CitationStyle } from "../citation.ts";
 import { collectHeadings, headingSlug, inlineText, type TocEntry } from "./headings.ts";
 
 export function render(ast: Document, options?: RenderOptions): ReactNode {
   const assets = options?.assets ?? {};
   const reviewMode: ReviewMode = options?.reviewMode ?? "markup";
+  const citationStyle = resolveCitationStyle(options?.citationStyle);
+  const bibByKey = new Map(ast.bibliography.map((entry) => [entry.key, entry]));
   const footnoteDefs = collectFootnotes(ast.body);
   const toc = ast.body.some((b) => b.type === "tableOfContents") ? collectHeadings(ast.body) : [];
-  const ctx: Ctx = { assets, reviewMode, bibliography: ast.bibliography, toc, reviewSeq: 0 };
+  const ctx: Ctx = {
+    assets,
+    reviewMode,
+    bibliography: ast.bibliography,
+    citationStyle,
+    bibByKey,
+    toc,
+    reviewSeq: 0,
+  };
 
   return createElement(
     "article",
@@ -91,6 +103,8 @@ type Ctx = {
   assets: Record<string, string>;
   reviewMode: ReviewMode;
   bibliography: Document["bibliography"];
+  citationStyle: CitationStyle;
+  bibByKey: Map<string, BibEntry>;
   toc: TocEntry[];
   reviewSeq: number;
 };
@@ -181,7 +195,15 @@ function renderBlock(node: BlockNode, key: number | string, ctx: Ctx): ReactNode
           "ol",
           null,
           ...ctx.bibliography.map((entry) =>
-            createElement("li", { key: entry.key, id: `ref-${entry.key}` }, formatBibEntry(entry)),
+            createElement(
+              "li",
+              { key: entry.key, id: `ref-${entry.key}` },
+              ...ctx.citationStyle
+                .reference(entry)
+                .map((run, i) =>
+                  run.italic ? createElement("em", { key: i }, run.text) : run.text,
+                ),
+            ),
           ),
         ),
       );
@@ -238,17 +260,18 @@ function renderInline(node: InlineNode, key: number | string, ctx: Ctx): ReactNo
       return createElement("s", { key }, ...node.children.map((c, i) => renderInline(c, i, ctx)));
     case "break":
       return createElement("br", { key });
-    case "cite":
+    case "cite": {
+      const segments = ctx.citationStyle.inText(node.keys, (k) => ctx.bibByKey.get(k));
       return createElement(
         "cite",
         { key },
-        "[",
-        ...node.keys.flatMap((k, i) => [
-          i > 0 ? ", " : null,
-          createElement("a", { key: k, href: `#ref-${k}` }, k),
-        ]),
-        "]",
+        ...segments.map((segment, i) =>
+          segment.key
+            ? createElement("a", { key: i, href: `#ref-${segment.key}` }, segment.text)
+            : segment.text,
+        ),
       );
+    }
     case "ref":
       return createElement("a", { key, href: node.id ? `#${node.id}` : undefined }, node.label);
     case "footnoteRef":
@@ -425,16 +448,6 @@ function renderTocItems(entries: TocEntry[]): ReactNode[] {
     i = j;
   }
   return items;
-}
-
-function formatBibEntry(entry: Document["bibliography"][number]): string {
-  const f = entry.fields;
-  const author = f.author ?? "";
-  const title = f.title ?? "";
-  const year = f.year ?? "";
-  const journal = f.journal ?? f.booktitle ?? "";
-  const parts = [author, title && `"${title}"`, journal, year].filter(Boolean);
-  return parts.join(". ") + (parts.length ? "." : entry.key);
 }
 
 function collectFootnotes(body: BlockNode[]): Extract<BlockNode, { type: "footnoteDefinition" }>[] {
