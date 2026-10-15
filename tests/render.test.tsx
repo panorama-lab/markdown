@@ -123,10 +123,10 @@ Body
     ) as { props: Record<string, unknown> };
 
     expect(addition.props["data-review"]).toBe("addition");
-    expect(addition.props["data-review-id"]).toBe("0");
+    expect(addition.props["data-review-id"]).toBe("9");
     expect(annotation.props.children).toBe("Suggested addition");
     expect(comment.props["data-comment"]).toBe(true);
-    expect(comment.props["data-review-id"]).toBe("1");
+    expect(comment.props["data-review-id"]).toBe("24");
   });
 
   it("renders APA in-text citations by default", () => {

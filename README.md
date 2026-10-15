@@ -31,6 +31,20 @@ const tree = render(parse(source), { reviewMode: "markup" });
 
 Citations and the references list render in APA style by default (`citationStyle: "apa"`), e.g. `(Smith, 2024)` and `Smith, J. (2024). Title. Journal, 12(3), 45–50.`.
 
+## Review markers
+
+`listCriticMarkers(source)` lists the review spans recognized by the parser, including nested spans. Escaped text, code, front matter, and link destinations do not produce review markers.
+
+```ts
+import { listCriticMarkers, parse } from "@panorama-lab/markdown";
+
+const document = parse(source, { files });
+const markers = listCriticMarkers(document);
+const editableMarkers = markers.filter((marker) => marker.file === undefined);
+```
+
+Each marker has an `id` matching the React renderer's `data-review-id`, plus `start`, `end`, `contentStart`, and `contentEnd` offsets into the original source. IDs identify source locations, so they do not depend on render order. Reparse after editing to refresh IDs and offsets. Markers from external table files include a `file` path and have IDs scoped to that file; their offsets refer to that file's content.
+
 ## PDF render
 
 ```ts

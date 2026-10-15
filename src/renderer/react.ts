@@ -281,15 +281,15 @@ function renderInline(node: InlineNode, key: number | string, ctx: Ctx): ReactNo
         createElement("a", { href: `#fn-${node.id}` }, node.id),
       );
     case "addition":
-      return renderReviewAddition(node, key, ctx, String(ctx.reviewSeq++));
+      return renderReviewAddition(node, key, ctx, node.review?.id ?? String(ctx.reviewSeq++));
     case "deletion":
-      return renderReviewDeletion(node, key, ctx, String(ctx.reviewSeq++));
+      return renderReviewDeletion(node, key, ctx, node.review?.id ?? String(ctx.reviewSeq++));
     case "substitution":
-      return renderReviewSubstitution(node, key, ctx, String(ctx.reviewSeq++));
+      return renderReviewSubstitution(node, key, ctx, node.review?.id ?? String(ctx.reviewSeq++));
     case "highlight":
-      return renderReviewHighlight(node, key, ctx, String(ctx.reviewSeq++));
+      return renderReviewHighlight(node, key, ctx, node.review?.id ?? String(ctx.reviewSeq++));
     case "comment":
-      return renderReviewComment(node, key, ctx, String(ctx.reviewSeq++));
+      return renderReviewComment(node, key, ctx, node.review?.id ?? String(ctx.reviewSeq++));
     default:
       return null;
   }

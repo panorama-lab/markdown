@@ -10,8 +10,10 @@ import type {
   TableRowNode,
   Warning,
 } from "./ast.ts";
+import type { CriticKind, CriticMarker } from "./review.ts";
 
 import { parseFrontMatter } from "./frontmatter.ts";
+import { SourceText } from "./source.ts";
 
 export type { ParseOptions } from "./ast.ts";
 
@@ -22,7 +24,7 @@ export function parse(source: string, options?: ParseOptions): Document {
   if (error) {
     warnings.push({ code: "invalid-front-matter", message: error });
   }
-  const body = parseBlocks(afterFront);
+  const body = parseBlocks(new SourceText(source).slice(source.length - afterFront.length));
   const citeKeys = collectCiteKeys(body);
   const bibEntries = files["references.bib"] ? parseBibTeX(files["references.bib"]) : [];
   const bibByKey = new Map(bibEntries.map((e) => [e.key, e]));
@@ -53,8 +55,9 @@ export function parse(source: string, options?: ParseOptions): Document {
   };
 }
 
-function parseBlocks(source: string): BlockNode[] {
-  const lines = source.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+function parseBlocks(source: SourceText): BlockNode[] {
+  const mappedLines = source.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+  const lines = mappedLines.map((line) => line.value);
   const blocks: BlockNode[] = [];
   let i = 0;
 
@@ -93,7 +96,12 @@ function parseBlocks(source: string): BlockNode[] {
       blocks.push({
         type: "heading",
         depth,
-        children: parseInlines(text),
+        children: parseMappedInlines(
+          mappedLines[i].slice(
+            line.indexOf(headingMatch[2]),
+            line.indexOf(headingMatch[2]) + text.length,
+          ),
+        ),
         id,
       });
       i += 1;
@@ -126,7 +134,12 @@ function parseBlocks(source: string): BlockNode[] {
       const attrs = parseAttrs(figureMatch[2] ?? "");
       blocks.push({
         type: "figure",
-        caption: parseInlines(figureMatch[1]),
+        caption: parseMappedInlines(
+          mappedLines[i].slice(
+            line.indexOf("[") + 1,
+            line.indexOf("[") + 1 + figureMatch[1].length,
+          ),
+        ),
         src: attrs.src ?? "",
         id: figureMatch[3],
       });
@@ -141,7 +154,12 @@ function parseBlocks(source: string): BlockNode[] {
       const attrs = parseAttrs(tableDirMatch[2] ?? "");
       blocks.push({
         type: "tableDirective",
-        caption: parseInlines(tableDirMatch[1]),
+        caption: parseMappedInlines(
+          mappedLines[i].slice(
+            line.indexOf("[") + 1,
+            line.indexOf("[") + 1 + tableDirMatch[1].length,
+          ),
+        ),
         src: attrs.src ?? "",
         id: tableDirMatch[3],
       });
@@ -174,7 +192,7 @@ function parseBlocks(source: string): BlockNode[] {
     if (/^::/.test(line.trim())) {
       blocks.push({
         type: "paragraph",
-        children: parseInlines(line.trim()),
+        children: parseMappedInlines(mappedLines[i].trim()),
       });
       i += 1;
       continue;
@@ -184,31 +202,34 @@ function parseBlocks(source: string): BlockNode[] {
     if (footnoteDefMatch) {
       const id = footnoteDefMatch[1];
       const first = footnoteDefMatch[2];
-      const contentLines = [first];
+      const firstSource = mappedLines[i].slice(line.length - first.length);
+      const contentLines = [firstSource];
       i += 1;
       while (i < lines.length && (lines[i].startsWith("    ") || lines[i].startsWith("\t"))) {
-        contentLines.push(lines[i].replace(/^(?:    |\t)/, ""));
+        contentLines.push(mappedLines[i].replace(/^(?:    |\t)/, ""));
         i += 1;
       }
-      const children = parseBlocks(contentLines.join("\n"));
+      const children = parseBlocks(SourceText.join(contentLines, "\n"));
       const def: FootnoteDefinitionNode = {
         type: "footnoteDefinition",
         id,
         children:
-          children.length > 0 ? children : [{ type: "paragraph", children: parseInlines(first) }],
+          children.length > 0
+            ? children
+            : [{ type: "paragraph", children: parseMappedInlines(firstSource) }],
       };
       blocks.push(def);
       continue;
     }
 
     if (/^ {0,3}>/.test(line)) {
-      const quoteLines: string[] = [];
+      const quoteLines: SourceText[] = [];
       while (i < lines.length && (/^ {0,3}>/.test(lines[i]) || lines[i].trim() === "")) {
         if (lines[i].trim() === "" && quoteLines.length === 0) break;
         if (lines[i].trim() === "") {
-          quoteLines.push("");
+          quoteLines.push(mappedLines[i].slice(0, 0));
         } else {
-          quoteLines.push(lines[i].replace(/^ {0,3}>\s?/, ""));
+          quoteLines.push(mappedLines[i].replace(/^ {0,3}>\s?/, ""));
         }
         i += 1;
         if (
@@ -222,44 +243,45 @@ function parseBlocks(source: string): BlockNode[] {
       }
       blocks.push({
         type: "blockquote",
-        children: parseBlocks(quoteLines.join("\n")),
+        children: parseBlocks(SourceText.join(quoteLines, "\n")),
       });
       continue;
     }
 
     if (isListLine(line)) {
-      const { list, next } = parseList(lines, i);
+      const { list, next } = parseList(mappedLines, i);
       blocks.push(list);
       i = next;
       continue;
     }
 
     if (isTableLine(line) && i + 1 < lines.length && isTableSeparator(lines[i + 1])) {
-      const { table, next } = parseTable(lines, i);
+      const { table, next } = parseTable(mappedLines, i);
       blocks.push(table);
       i = next;
       continue;
     }
 
-    const paraLines: string[] = [];
+    const paraLines: SourceText[] = [];
     while (i < lines.length && lines[i].trim() !== "" && !isBlockStart(lines[i])) {
-      paraLines.push(lines[i]);
+      paraLines.push(mappedLines[i]);
       i += 1;
     }
     if (paraLines.length > 0) {
-      const text = paraLines
-        .join("\n")
+      const text = SourceText.join(paraLines, "\n")
         .replace(/[ \t]+\n/g, "\n")
         .replace(/\n/g, " ");
-      const hardBreakText = paraLines
-        .map((l, idx) =>
-          idx < paraLines.length - 1 && / {2}$/.test(l) ? l.replace(/ {2}$/, "\n") : l,
-        )
-        .join(" ")
-        .replace(/ \n /g, "\n");
+      const hardBreakText = SourceText.join(
+        paraLines.map((line, index) =>
+          index < paraLines.length - 1 && / {2}$/.test(line.value)
+            ? line.replace(/ {2}$/, "\n")
+            : line,
+        ),
+        " ",
+      ).replace(/ \n /g, "\n");
       blocks.push({
         type: "paragraph",
-        children: parseInlines(hardBreakText.includes("\n") ? hardBreakText : text),
+        children: parseMappedInlines(hardBreakText.value.includes("\n") ? hardBreakText : text),
       });
     }
   }
@@ -304,7 +326,8 @@ function isTableSeparator(line: string): boolean {
   return /^\s*\|?(?:\s*:?-+:?\s*\|)+\s*:?-+:?\s*\|?\s*$/.test(line);
 }
 
-function parseList(lines: string[], start: number): { list: BlockNode; next: number } {
+function parseList(mappedLines: SourceText[], start: number): { list: BlockNode; next: number } {
+  const lines = mappedLines.map((line) => line.value);
   const first = lines[start];
   const ordered = /^\s*\d+\./.test(first);
   const startNumMatch = /^\s*(\d+)\./.exec(first);
@@ -322,7 +345,7 @@ function parseList(lines: string[], start: number): { list: BlockNode; next: num
       break;
     }
     if (!isListLine(line)) break;
-    const content = line.replace(/^ {0,3}(?:[-*+]|\d+\.)\s+/, "");
+    const content = mappedLines[i].replace(/^ {0,3}(?:[-*+]|\d+\.)\s+/, "");
     const itemLines = [content];
     i += 1;
     while (
@@ -331,14 +354,16 @@ function parseList(lines: string[], start: number): { list: BlockNode; next: num
       !isListLine(lines[i]) &&
       !isBlockStart(lines[i])
     ) {
-      itemLines.push(lines[i].replace(/^ {2,4}/, ""));
+      itemLines.push(mappedLines[i].replace(/^ {2,4}/, ""));
       i += 1;
     }
-    const children = parseBlocks(itemLines.join("\n"));
+    const children = parseBlocks(SourceText.join(itemLines, "\n"));
     items.push({
       type: "listItem",
       children:
-        children.length > 0 ? children : [{ type: "paragraph", children: parseInlines(content) }],
+        children.length > 0
+          ? children
+          : [{ type: "paragraph", children: parseMappedInlines(content) }],
     });
   }
 
@@ -353,12 +378,13 @@ function parseList(lines: string[], start: number): { list: BlockNode; next: num
   };
 }
 
-function parseTable(lines: string[], start: number): { table: BlockNode; next: number } {
-  const header = parseTableRow(lines[start]);
+function parseTable(mappedLines: SourceText[], start: number): { table: BlockNode; next: number } {
+  const lines = mappedLines.map((line) => line.value);
+  const header = parseTableRow(mappedLines[start]);
   let i = start + 2;
   const rows: TableRowNode[] = [];
   while (i < lines.length && isTableLine(lines[i]) && !isTableSeparator(lines[i])) {
-    rows.push(parseTableRow(lines[i]));
+    rows.push(parseTableRow(mappedLines[i]));
     i += 1;
   }
   return {
@@ -371,14 +397,14 @@ function parseTable(lines: string[], start: number): { table: BlockNode; next: n
   };
 }
 
-function parseTableRow(line: string): TableRowNode {
+function parseTableRow(line: SourceText): TableRowNode {
   let s = line.trim();
-  if (s.startsWith("|")) s = s.slice(1);
-  if (s.endsWith("|")) s = s.slice(0, -1);
+  if (s.value.startsWith("|")) s = s.slice(1);
+  if (s.value.endsWith("|")) s = s.slice(0, -1);
   const cells = s.split("|").map((c) => c.trim());
   const children: TableCellNode[] = cells.map((c) => ({
     type: "tableCell",
-    children: parseInlines(c),
+    children: parseMappedInlines(c),
   }));
   return { type: "tableRow", children };
 }
@@ -398,6 +424,36 @@ function parseAttrs(raw: string): Record<string, string> {
 }
 
 export function parseInlines(source: string): InlineNode[] {
+  return parseMappedInlines(new SourceText(source));
+}
+
+function parseMappedInlines(input: SourceText): InlineNode[] {
+  const source = input.value;
+  const marker = (kind: CriticKind, from: number, to: number, separator?: number): CriticMarker => {
+    const start = input.positions[from];
+    const end = input.positions[to - 1] + 1;
+    const contentStart = start + 3;
+    const contentEnd = end - 3;
+    return {
+      id:
+        input.file === undefined
+          ? String(start)
+          : `file:${encodeURIComponent(input.file)}:${start}`,
+      kind,
+      start,
+      end,
+      contentStart,
+      contentEnd,
+      ...(input.file === undefined ? {} : { file: input.file }),
+      ...(separator === undefined
+        ? { text: input.original.slice(contentStart, contentEnd) }
+        : {
+            oldText: input.original.slice(contentStart, input.positions[separator]),
+            newText: input.original.slice(input.positions[separator + 1] + 1, contentEnd),
+          }),
+    };
+  };
+
   const nodes: InlineNode[] = [];
   let i = 0;
 
@@ -488,7 +544,11 @@ export function parseInlines(source: string): InlineNode[] {
     if (source.startsWith("{++", i)) {
       const end = source.indexOf("++}", i + 3);
       if (end !== -1) {
-        nodes.push({ type: "addition", children: parseInlines(source.slice(i + 3, end)) });
+        nodes.push({
+          type: "addition",
+          review: marker("addition", i, end + 3),
+          children: parseMappedInlines(input.slice(i + 3, end)),
+        });
         i = end + 3;
         continue;
       }
@@ -497,7 +557,11 @@ export function parseInlines(source: string): InlineNode[] {
     if (source.startsWith("{--", i)) {
       const end = source.indexOf("--}", i + 3);
       if (end !== -1) {
-        nodes.push({ type: "deletion", children: parseInlines(source.slice(i + 3, end)) });
+        nodes.push({
+          type: "deletion",
+          review: marker("deletion", i, end + 3),
+          children: parseMappedInlines(input.slice(i + 3, end)),
+        });
         i = end + 3;
         continue;
       }
@@ -511,8 +575,9 @@ export function parseInlines(source: string): InlineNode[] {
         if (sep !== -1) {
           nodes.push({
             type: "substitution",
-            old: parseInlines(inner.slice(0, sep)),
-            new: parseInlines(inner.slice(sep + 2)),
+            review: marker("substitution", i, end + 3, i + 3 + sep),
+            old: parseMappedInlines(input.slice(i + 3, i + 3 + sep)),
+            new: parseMappedInlines(input.slice(i + 3 + sep + 2, end)),
           });
           i = end + 3;
           continue;
@@ -525,7 +590,7 @@ export function parseInlines(source: string): InlineNode[] {
       if (end !== -1) {
         nodes.push({
           type: "strikethrough",
-          children: parseInlines(source.slice(i + 2, end)),
+          children: parseMappedInlines(input.slice(i + 2, end)),
         });
         i = end + 2;
         continue;
@@ -535,7 +600,11 @@ export function parseInlines(source: string): InlineNode[] {
     if (source.startsWith("{==", i)) {
       const end = source.indexOf("==}", i + 3);
       if (end !== -1) {
-        nodes.push({ type: "highlight", children: parseInlines(source.slice(i + 3, end)) });
+        nodes.push({
+          type: "highlight",
+          review: marker("highlight", i, end + 3),
+          children: parseMappedInlines(input.slice(i + 3, end)),
+        });
         i = end + 3;
         continue;
       }
@@ -544,7 +613,11 @@ export function parseInlines(source: string): InlineNode[] {
     if (source.startsWith("{>>", i)) {
       const end = source.indexOf("<<}", i + 3);
       if (end !== -1) {
-        nodes.push({ type: "comment", text: source.slice(i + 3, end) });
+        nodes.push({
+          type: "comment",
+          review: marker("comment", i, end + 3),
+          text: source.slice(i + 3, end),
+        });
         i = end + 3;
         continue;
       }
@@ -553,7 +626,7 @@ export function parseInlines(source: string): InlineNode[] {
     if (source.startsWith("**", i)) {
       const end = findClosing(source, i + 2, "**");
       if (end !== -1) {
-        nodes.push({ type: "strong", children: parseInlines(source.slice(i + 2, end)) });
+        nodes.push({ type: "strong", children: parseMappedInlines(input.slice(i + 2, end)) });
         i = end + 2;
         continue;
       }
@@ -562,7 +635,7 @@ export function parseInlines(source: string): InlineNode[] {
     if (source.startsWith("__", i)) {
       const end = findClosing(source, i + 2, "__");
       if (end !== -1) {
-        nodes.push({ type: "strong", children: parseInlines(source.slice(i + 2, end)) });
+        nodes.push({ type: "strong", children: parseMappedInlines(input.slice(i + 2, end)) });
         i = end + 2;
         continue;
       }
@@ -571,7 +644,7 @@ export function parseInlines(source: string): InlineNode[] {
     if (source[i] === "*" && source[i + 1] !== "*") {
       const end = findClosing(source, i + 1, "*");
       if (end !== -1) {
-        nodes.push({ type: "emphasis", children: parseInlines(source.slice(i + 1, end)) });
+        nodes.push({ type: "emphasis", children: parseMappedInlines(input.slice(i + 1, end)) });
         i = end + 1;
         continue;
       }
@@ -580,7 +653,7 @@ export function parseInlines(source: string): InlineNode[] {
     if (source[i] === "_" && source[i + 1] !== "_") {
       const end = findClosing(source, i + 1, "_");
       if (end !== -1) {
-        nodes.push({ type: "emphasis", children: parseInlines(source.slice(i + 1, end)) });
+        nodes.push({ type: "emphasis", children: parseMappedInlines(input.slice(i + 1, end)) });
         i = end + 1;
         continue;
       }
@@ -600,7 +673,7 @@ export function parseInlines(source: string): InlineNode[] {
             type: "link",
             url,
             title,
-            children: parseInlines(label),
+            children: parseMappedInlines(input.slice(i + 1, labelEnd)),
           });
           i = urlEnd + 1;
           continue;
@@ -643,7 +716,10 @@ function parseBibTeX(source: string): BibEntry[] {
   return entries;
 }
 
-function walkBlocks(blocks: BlockNode[], visit: (node: BlockNode | InlineNode) => void): void {
+export function walkBlocks(
+  blocks: BlockNode[],
+  visit: (node: BlockNode | InlineNode) => void,
+): void {
   for (const block of blocks) {
     visit(block);
     switch (block.type) {
@@ -733,7 +809,7 @@ function resolveAssets(
             message: `Missing table asset: ${node.src}`,
           });
         } else {
-          node.body = parseBlocks(files[node.src]);
+          node.body = parseBlocks(new SourceText(files[node.src], undefined, undefined, node.src));
         }
       }
     }

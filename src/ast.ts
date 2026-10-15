@@ -1,3 +1,5 @@
+import type { CriticMarker } from "./review.ts";
+
 export type Author = {
   name: string;
   email?: string;
@@ -78,27 +80,32 @@ export type FootnoteRefNode = {
 
 export type AdditionNode = {
   type: "addition";
+  review?: CriticMarker;
   children: InlineNode[];
 };
 
 export type DeletionNode = {
   type: "deletion";
+  review?: CriticMarker;
   children: InlineNode[];
 };
 
 export type SubstitutionNode = {
   type: "substitution";
+  review?: CriticMarker;
   old: InlineNode[];
   new: InlineNode[];
 };
 
 export type HighlightNode = {
   type: "highlight";
+  review?: CriticMarker;
   children: InlineNode[];
 };
 
 export type CommentNode = {
   type: "comment";
+  review?: CriticMarker;
   text: string;
 };
 

@@ -218,4 +218,6 @@ Panorama Markdown supports review spans based on CriticMarkup. Review markers ar
 | `{==text==}`     | Highlight              | `{==this sentence==}`   |
 | `{>>text<<}`     | Comment                | `{>>Needs a source.<<}` |
 
-Renderers consume review nodes through `reviewMode` &mdash; `"markup"` (show markers), `"clean"` (apply additions, keep deletions), or `"accepted"` (apply all suggestions).
+Renderers consume review nodes through `reviewMode` &mdash; `"markup"` (show markers), `"clean"` (hide additions, keep deletions), or `"accepted"` (apply all suggestions).
+
+Review nodes include optional `review` metadata containing the marker identity and original source offsets. `listCriticMarkers` accepts source text or a parsed document and returns these markers, including nested review spans. Escaped markers, front matter, code, and link destinations are excluded according to the parser's rules. React rendering uses the marker identity as `data-review-id`, preserving the association when footnotes are moved or external tables are rendered. External markers include their file path, and their offsets refer to that file.
