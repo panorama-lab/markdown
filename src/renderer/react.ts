@@ -366,7 +366,6 @@ function renderReviewSubstitution(
       "span",
       { "data-substitution": true, ...reviewProps("substitution", id) },
       createElement("del", null, ...node.old.map((c, i) => renderInline(c, i, ctx))),
-      " → ",
       createElement("ins", null, ...node.new.map((c, i) => renderInline(c, i, ctx))),
     ),
   );
