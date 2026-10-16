@@ -1,4 +1,4 @@
-export { countWords, render } from "../renderer/pdf.ts";
+export { render } from "../renderer/pdf.ts";
 export {
   ACMStyle,
   APAStyle,
