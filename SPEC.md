@@ -1,34 +1,10 @@
-# Panorama Markdown Specification 0.3.0
+# Panorama Markdown Syntax Specification 0.3.0
 
-Panorama Markdown is a small dialect for authoring academic papers and representing parsed papers in Markdown. It extends CommonMark with paper-oriented constructs &mdash; front matter, citations, figures, cross-references, and review directives &mdash; while keeping the source readable and diff-friendly.
-
-## Directory structure
-
-A paper uses a **flat** directory: every file lives at the paper root, with no subdirectories. Paths in `content.md` are resolved relative to that root.
-
-```
-paper-directory/
-  content.md          # required — body + YAML front matter
-  references.bib      # optional — BibTeX sources for :cite / ::references
-  system.png          # optional — figure assets
-  results.md          # optional — markdown table content
-  content.pdf         # optional — source PDF when the paper was converted
-```
-
-Do not use nested folders such as `figures/` or `tables/`. Keep every asset next to `content.md`, and give files readable names rather than generic ones such as `figure-01` or `table-0`.
-
-### Asset paths
-
-The `src` values of figures and tables are filenames resolved from the paper root:
-
-```md
-::figure[System overview](src=system.png){#fig-system}
-::table[Experimental results](src=results.md){#tab-results}
-```
+Panorama Markdown extends CommonMark with front matter, citations, figures, cross-references, and review directives.
 
 ## Front matter
 
-Metadata lives in the YAML front matter at the top of `content.md`. Do not repeat the title, abstract, or keywords in the body.
+Metadata lives in YAML front matter at the start of the document, delimited by `---` lines.
 
 ```yaml
 ---
@@ -62,7 +38,7 @@ keywords:
 
 ## Headings
 
-Use ATX headings. The document order defines the hierarchy, so do not number headings &mdash; write `Introduction`, not `1. Introduction`; the renderer adds numbering when needed.
+Use ATX headings. The number of `#` characters defines the heading level.
 
 ```md
 # Introduction
@@ -80,7 +56,7 @@ A heading may carry a stable id for cross-references:
 
 ## Paragraphs and emphasis
 
-Write each paragraph on a single line; do not wrap paragraphs manually. Separate paragraphs with a single blank line. Multiple consecutive blank lines are normalized to a single blank line. Standard inline markup is supported:
+Separate paragraphs with a blank line. Standard inline markup is supported:
 
 ```md
 **strong text**
@@ -137,7 +113,7 @@ Place the bibliography where the references section should appear:
 ::references
 ```
 
-The references block is populated from `references.bib` using the keys cited in the body, in order of first citation. Unknown keys are reported as parse warnings.
+The references block includes entries from `references.bib` in order of first citation.
 
 ## Page breaks
 
@@ -146,8 +122,6 @@ Insert an explicit page break with this leaf directive:
 ```md
 ::pagebreak
 ```
-
-Use this only when the layout requires a hard break, for example before appendices. Otherwise, prefer the natural section flow.
 
 ## Figures
 
@@ -171,7 +145,7 @@ which is short for
 
 ## Tables
 
-Tables follow the same pattern as figures. The bracket text supplies the caption, and `src` points to table content at the paper root &mdash; typically a Markdown or HTML fragment:
+Tables follow the same pattern as figures. The bracket text supplies the caption, and `src` points to table content &mdash; typically a Markdown or HTML fragment:
 
 ```md
 ::table[Experimental results](src=results.md){#tab-results}
@@ -195,7 +169,7 @@ See :ref[Introduction]{#introduction} for the problem setup.
 As shown in :ref{#fig-system}, the pipeline has three stages.
 ```
 
-Add the matching id to the target heading, figure, or table so the renderer can resolve the link. References to ids that do not exist are reported as parse warnings.
+The target heading, figure, or table must carry the matching id.
 
 ## Table of contents
 
@@ -205,7 +179,7 @@ Insert a table of contents with the `::table_of_contents` directive. The bracket
 ::table_of_contents[Table of contents]{levels=3}
 ```
 
-The renderer lists every body heading at or above `levels`. Headings without an explicit `{#id}` get an automatically generated anchor id.
+The table of contents includes body headings whose level is less than or equal to `levels`.
 
 ## Comments and suggested edits
 
@@ -257,22 +231,4 @@ An immediately adjacent delete and insert form one replacement suggestion in eit
 :insert[new text]{#c4}:delete[old text]
 ```
 
-A shared ID or an ID on either half identifies the whole replacement and its single comment thread. Two different explicit IDs keep the directives separate. Whitespace or text between the directives also keeps them separate. The parser returns a `substitution` node with `old` and `new` children, regardless of source order; standalone insert/delete directives become `addition`/`deletion` nodes.
-
-### Parsing, rendering, and review actions
-
-`parse(source)` returns the body AST in `body` and an ID-keyed metadata mapping in `comments` (also available as `meta.comments`). A document with no comment metadata returns `comments: {}`. `comment` nodes contain inline `children` representing the anchored original text.
-
-`listReviewMarkers(sourceOrDocument)` lists parsed spans, including nested spans. Each node's `review` metadata contains its identity and original source offsets. An explicit ID supplies `commentId` and the React renderer's `data-review-id`; anonymous spans use source offsets as temporary identities. External markers include a `file` path and a namespaced identity, and their offsets refer to that file. Reparse after every edit to refresh offsets.
-
-Renderers support `reviewMode`:
-
-- `"markup"`: show comments anchored to original text and mark suggested insertions/deletions/replacements.
-- `"clean"`: show original text, keeping deletions and old replacement text, and hiding insertions.
-- `"accepted"`: show suggested text, keeping insertions and new replacement text, and hiding deletions.
-
-Comment anchors retain their original text in every mode. Frontmatter comment messages and replies are displayed by the application's review UI, not as document text.
-
-The React application's comments offer **Reply**, **Edit**, and **Delete**. Suggestions offer **Reply**, **Accept**, and **Reject**. Replies support nested replies, editing, and deletion. Deleting a comment removes its annotation and metadata thread while preserving anchored text. Accepting or rejecting a suggestion resolves the entire replacement pair and removes its metadata and replies.
-
-The package exports `applyReview(source, marker, action)` (`"accept"`, `"reject"`, or `"delete"`), `setComment(source, id, metadata)`, `setReviewComment(source, marker, metadata)` for editing an anchored comment, `deleteComment(source, id)` for metadata-thread deletion, and `replyToReview(source, marker, replyId, metadata)`. Replying to an anonymous span adds a persistent ID before writing reply metadata. Mutations operate on the main document; external file markers must be edited in their own source document.
+A shared ID or an ID on either half identifies the whole replacement and its single comment thread. Two different explicit IDs keep the directives separate. Whitespace or text between the directives also keeps them separate.
