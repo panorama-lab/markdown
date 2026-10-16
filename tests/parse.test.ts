@@ -338,9 +338,9 @@ describe("figures and tables", () => {
   });
 });
 
-describe("CriticMarkup", () => {
-  it("parses addition deletion substitution highlight comment", () => {
-    const doc = parse("{++inserted++} {--removed--} {~~old~>new~~} {==hl==}{>>note<<}");
+describe("review directives", () => {
+  it("parses addition deletion substitution comment", () => {
+    const doc = parse(":insert[inserted] :delete[removed] :delete[old]:insert[new] :comment[note]");
     const p = doc.body[0];
     expect(p.type).toBe("paragraph");
     if (p.type !== "paragraph") return;
@@ -348,21 +348,20 @@ describe("CriticMarkup", () => {
     expect(types).toContain("addition");
     expect(types).toContain("deletion");
     expect(types).toContain("substitution");
-    expect(types).toContain("highlight");
     expect(types).toContain("comment");
     const comment = p.children.find((c) => c.type === "comment");
-    expect(comment).toMatchObject({ type: "comment", text: "note" });
+    expect(comment).toMatchObject({ type: "comment", children: [{ type: "text", value: "note" }] });
   });
 
-  it("leaves critic markers inside code as literal text", () => {
-    const doc = parse("Use `{++not a marker++}` in code.\n\n```\n{--also literal--}\n```\n");
+  it("leaves directives inside code as literal text", () => {
+    const doc = parse("Use `:insert[not a marker]` in code.\n\n```\n:delete[also literal]\n```\n");
     const p = doc.body[0];
     expect(p.type).toBe("paragraph");
     if (p.type !== "paragraph") return;
     expect(p.children.some((c) => c.type === "addition")).toBe(false);
     const code = p.children.find((c) => c.type === "inlineCode");
-    expect(code).toMatchObject({ type: "inlineCode", value: "{++not a marker++}" });
-    expect(doc.body[1]).toMatchObject({ type: "code", value: "{--also literal--}" });
+    expect(code).toMatchObject({ type: "inlineCode", value: ":insert[not a marker]" });
+    expect(doc.body[1]).toMatchObject({ type: "code", value: ":delete[also literal]" });
   });
 });
 

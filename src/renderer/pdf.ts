@@ -144,7 +144,7 @@ function inlinePdfText(nodes: InlineNode[], style: ResolvedStyle): string {
         case "link":
         case "strikethrough":
         case "addition":
-        case "highlight":
+        case "comment":
           return style.reviewMode === "clean" && node.type === "addition"
             ? ""
             : inlinePdfText(node.children, style);
@@ -160,8 +160,6 @@ function inlinePdfText(nodes: InlineNode[], style: ResolvedStyle): string {
           return node.label;
         case "footnoteRef":
           return node.id;
-        case "comment":
-          return style.reviewMode === "markup" ? ` [comment: ${node.text}]` : "";
         case "deletion":
           return style.reviewMode === "accepted" ? "" : inlinePdfText(node.children, style);
       }
@@ -1057,8 +1055,6 @@ function renderInline(node: InlineNode, key: number | string, style: ResolvedSty
       return renderReviewDeletion(node, key, style);
     case "substitution":
       return renderReviewSubstitution(node, key, style);
-    case "highlight":
-      return renderReviewHighlight(node, key, style);
     case "comment":
       return renderReviewComment(node, key, style);
     default:
@@ -1134,35 +1130,15 @@ function renderReviewSubstitution(
   );
 }
 
-function renderReviewHighlight(
-  node: Extract<InlineNode, { type: "highlight" }>,
-  key: number | string,
-  style: ResolvedStyle,
-): ReactNode {
-  if (style.reviewMode !== "markup") {
-    return createElement(
-      Fragment,
-      { key },
-      ...node.children.map((c, i) => renderInline(c, i, style)),
-    );
-  }
-  return createElement(
-    Text,
-    { key, style: { backgroundColor: "#ff0" } },
-    ...node.children.map((c, i) => renderInline(c, i, style)),
-  );
-}
-
 function renderReviewComment(
   node: Extract<InlineNode, { type: "comment" }>,
   key: number | string,
   style: ResolvedStyle,
 ): ReactNode {
-  if (style.reviewMode !== "markup") return null;
   return createElement(
     Text,
-    { key, style: { color: "#06c", fontSize: style.fontSize - 1 } },
-    ` [comment: ${node.text}]`,
+    { key, style: style.reviewMode === "markup" ? { backgroundColor: "#fff3bd" } : {} },
+    ...node.children.map((c, i) => renderInline(c, i, style)),
   );
 }
 

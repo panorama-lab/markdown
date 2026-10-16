@@ -88,13 +88,13 @@ Body
   });
 
   it("respects reviewMode clean", () => {
-    const ast = parse("{++new++}{--old--}");
+    const ast = parse(":insert[new]:delete[old]");
     const tree = render(ast, { reviewMode: "clean" });
     expect(isValidElement(tree)).toBe(true);
   });
 
-  it("renders review annotations alongside source markup", () => {
-    const tree = render(parse("Original {++addition++} {>>clarify this<<}"), {
+  it("renders review markup without inline suggestion labels", () => {
+    const tree = render(parse("Original :insert[addition] :comment[clarify this]"), {
       reviewMode: "markup",
     }) as { props: { children: unknown[] } };
     const paragraph = tree.props.children.find(
@@ -124,9 +124,9 @@ Body
 
     expect(addition.props["data-review"]).toBe("addition");
     expect(addition.props["data-review-id"]).toBe("9");
-    expect(annotation.props.children).toBe("Suggested addition");
+    expect(annotation).toBeUndefined();
     expect(comment.props["data-comment"]).toBe(true);
-    expect(comment.props["data-review-id"]).toBe("24");
+    expect(comment.props["data-review-id"]).toBe("27");
   });
 
   it("renders APA in-text citations by default", () => {

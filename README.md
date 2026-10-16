@@ -33,17 +33,21 @@ Citations and the references list render in APA style by default (`citationStyle
 
 ## Review markers
 
-`listCriticMarkers(source)` lists the review spans recognized by the parser, including nested spans. Escaped text, code, front matter, and link destinations do not produce review markers.
+`listReviewMarkers(source)` lists the review spans recognized by the parser, including nested spans. Escaped text, code, front matter, and link destinations do not produce review markers.
 
 ```ts
-import { listCriticMarkers, parse } from "@panorama-lab/markdown";
+import { listReviewMarkers, parse } from "@panorama-lab/markdown";
 
 const document = parse(source, { files });
-const markers = listCriticMarkers(document);
+const markers = listReviewMarkers(document);
 const editableMarkers = markers.filter((marker) => marker.file === undefined);
 ```
 
-Each marker has an `id` matching the React renderer's `data-review-id`, plus `start`, `end`, `contentStart`, and `contentEnd` offsets into the original source. IDs identify source locations, so they do not depend on render order. Reparse after editing to refresh IDs and offsets. Markers from external table files include a `file` path and have IDs scoped to that file; their offsets refer to that file's content.
+Write `:comment[original text]{#c1}`, `:insert[new text]{#c2}`, or `:delete[old text]{#c3}`. Adjacent insert/delete directives form one replacement, in either order, with a shared ID or an ID on either half. Store author (`by`), timestamp (`at`), message (`body`), and reply parent (`re`) in the ID-keyed frontmatter `comments` mapping. `parse` returns both the body AST and `document.comments`.
+
+Each marker has an `id` matching the React renderer's `data-review-id`, plus `start`, `end`, `contentStart`, and `contentEnd` offsets into the original source. Explicit IDs persist across edits; anonymous IDs identify source locations and do not depend on render order. Reparse after editing to refresh IDs and offsets. Markers from external table files include a `file` path and have IDs scoped to that file; their offsets refer to that file's content.
+
+Use `applyReview` to accept/reject suggestions or delete comment annotations, `setComment` to edit metadata, and `replyToReview` to add replies. Resolving a suggestion or deleting a comment removes its metadata thread and descendants. Deleting an annotation preserves its original text.
 
 ## PDF render
 

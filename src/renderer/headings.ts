@@ -54,7 +54,7 @@ export function inlineText(nodes: InlineNode[]): string {
         case "strikethrough":
         case "addition":
         case "deletion":
-        case "highlight":
+        case "comment":
           return inlineText(n.children);
         case "inlineCode":
           return n.value;

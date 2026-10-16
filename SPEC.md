@@ -1,6 +1,6 @@
 # Panorama Markdown Specification 0.3.0
 
-Panorama Markdown is a small dialect for authoring academic papers and representing parsed papers in Markdown. It extends CommonMark with paper-oriented constructs &mdash; front matter, citations, figures, cross-references, and CriticMarkup review spans &mdash; while keeping the source readable and diff-friendly.
+Panorama Markdown is a small dialect for authoring academic papers and representing parsed papers in Markdown. It extends CommonMark with paper-oriented constructs &mdash; front matter, citations, figures, cross-references, and review directives &mdash; while keeping the source readable and diff-friendly.
 
 ## Directory structure
 
@@ -47,17 +47,18 @@ keywords:
 ---
 ```
 
-| Field                     | Type            | Required | Notes                       |
-| ------------------------- | --------------- | -------- | --------------------------- |
-| `title`                   | string          | yes      | Document title              |
-| `authors`                 | list of objects | yes      | One entry per author        |
-| `authors[].name`          | string          | yes      | Display name                |
-| `authors[].email`         | string          | no       | Contact email               |
-| `authors[].affiliation`   | string          | no       | Institution or organization |
-| `authors[].country`       | string          | no       | Country                     |
-| `authors[].corresponding` | boolean         | no       | Mark corresponding authors  |
-| `abstract`                | string          | yes      | Abstract text               |
-| `keywords`                | list of strings | no       | Index terms                 |
+| Field                     | Type             | Required | Notes                        |
+| ------------------------- | ---------------- | -------- | ---------------------------- |
+| `title`                   | string           | yes      | Document title               |
+| `authors`                 | list of objects  | yes      | One entry per author         |
+| `authors[].name`          | string           | yes      | Display name                 |
+| `authors[].email`         | string           | no       | Contact email                |
+| `authors[].affiliation`   | string           | no       | Institution or organization  |
+| `authors[].country`       | string           | no       | Country                      |
+| `authors[].corresponding` | boolean          | no       | Mark corresponding authors   |
+| `abstract`                | string           | yes      | Abstract text                |
+| `keywords`                | list of strings  | no       | Index terms                  |
+| `comments`                | ID-keyed mapping | no       | Comment metadata and replies |
 
 ## Headings
 
@@ -206,18 +207,72 @@ Insert a table of contents with the `::table_of_contents` directive. The bracket
 
 The renderer lists every body heading at or above `levels`. Headings without an explicit `{#id}` get an automatically generated anchor id.
 
-## CriticMarkup for comments and suggested edits
+## Comments and suggested edits
 
-Panorama Markdown supports review spans based on CriticMarkup. Review markers are parsed as inline nodes and ignored inside inline code and fenced code blocks.
+Inline review directives annotate document text. Their contents support inline Markdown, nested directives, escaped brackets, and inline code. Directives are ignored in code, escaped text, front matter, and link destinations.
 
-| Marker           | Meaning                | Example                 |
-| ---------------- | ---------------------- | ----------------------- |
-| `{++text++}`     | Suggested addition     | `Lorem {++ipsum++}`     |
-| `{--text--}`     | Suggested deletion     | `Lorem {--ipsum--}`     |
-| `{~~old~>new~~}` | Suggested substitution | `{~~hipsum~>ipsum~~}`   |
-| `{==text==}`     | Highlight              | `{==this sentence==}`   |
-| `{>>text<<}`     | Comment                | `{>>Needs a source.<<}` |
+| Directive                      | Meaning                           |
+| ------------------------------ | --------------------------------- |
+| `:comment[original text]{#c1}` | Anchor a comment to original text |
+| `:delete[original text]{#c2}`  | Suggest deleting original text    |
+| `:insert[new text]{#c3}`       | Suggest inserting new text        |
 
-Renderers consume review nodes through `reviewMode` &mdash; `"markup"` (show markers), `"clean"` (hide additions, keep deletions), or `"accepted"` (apply all suggestions).
+`{#id}` is optional. IDs contain letters, digits, underscores, or hyphens. An explicit ID associates a directive with metadata under the same key in front matter. Comment contents are original document text; the comment message belongs in metadata `body`.
 
-Review nodes include optional `review` metadata containing the marker identity and original source offsets. `listCriticMarkers` accepts source text or a parsed document and returns these markers, including nested review spans. Escaped markers, front matter, code, and link destinations are excluded according to the parser's rules. React rendering uses the marker identity as `data-review-id`, preserving the association when footnotes are moved or external tables are rendered. External markers include their file path, and their offsets refer to that file.
+### Metadata and replies
+
+`comments` is an ID-keyed YAML mapping, rather than a sequence. Each entry accepts `by` (author), `at` (an ISO 8601 timestamp string), `body` (the comment message), and `re` (the parent comment ID). Metadata fields are optional; replies normally provide a body and parent ID. Use spaces for YAML indentation.
+
+```md
+---
+comments:
+  c1:
+    by: author
+    at: "2026-04-28T12:00:00.000Z"
+    body: Please clarify this sentence.
+  c10:
+    re: c1
+    body: this is a reply
+    by: author
+    at: "2026-04-28T12:00:00.000Z"
+  c11:
+    re: c10
+    body: A nested reply.
+---
+
+:comment[original text]{#c1}
+```
+
+Replies can target comments, suggestions, or other replies using `re`. They need no inline directive of their own. Reply order follows frontmatter order. A thread can also have nested inline anchors, each with its own ID.
+
+### Replacement suggestions
+
+An immediately adjacent delete and insert form one replacement suggestion in either order:
+
+```md
+:delete[old text]:insert[new text]
+:insert[new text]:delete[old text]
+:delete[old text]{#c4}:insert[new text]{#c4}
+:insert[new text]:delete[old text]{#c4}
+:insert[new text]{#c4}:delete[old text]
+```
+
+A shared ID or an ID on either half identifies the whole replacement and its single comment thread. Two different explicit IDs keep the directives separate. Whitespace or text between the directives also keeps them separate. The parser returns a `substitution` node with `old` and `new` children, regardless of source order; standalone insert/delete directives become `addition`/`deletion` nodes.
+
+### Parsing, rendering, and review actions
+
+`parse(source)` returns the body AST in `body` and an ID-keyed metadata mapping in `comments` (also available as `meta.comments`). A document with no comment metadata returns `comments: {}`. `comment` nodes contain inline `children` representing the anchored original text.
+
+`listReviewMarkers(sourceOrDocument)` lists parsed spans, including nested spans. Each node's `review` metadata contains its identity and original source offsets. An explicit ID supplies `commentId` and the React renderer's `data-review-id`; anonymous spans use source offsets as temporary identities. External markers include a `file` path and a namespaced identity, and their offsets refer to that file. Reparse after every edit to refresh offsets.
+
+Renderers support `reviewMode`:
+
+- `"markup"`: show comments anchored to original text and mark suggested insertions/deletions/replacements.
+- `"clean"`: show original text, keeping deletions and old replacement text, and hiding insertions.
+- `"accepted"`: show suggested text, keeping insertions and new replacement text, and hiding deletions.
+
+Comment anchors retain their original text in every mode. Frontmatter comment messages and replies are displayed by the application's review UI, not as document text.
+
+The React application's comments offer **Reply**, **Edit**, and **Delete**. Suggestions offer **Reply**, **Accept**, and **Reject**. Replies support nested replies, editing, and deletion. Deleting a comment removes its annotation and metadata thread while preserving anchored text. Accepting or rejecting a suggestion resolves the entire replacement pair and removes its metadata and replies.
+
+The package exports `applyReview(source, marker, action)` (`"accept"`, `"reject"`, or `"delete"`), `setComment(source, id, metadata)`, `setReviewComment(source, marker, metadata)` for editing an anchored comment, `deleteComment(source, id)` for metadata-thread deletion, and `replyToReview(source, marker, replyId, metadata)`. Replying to an anonymous span adds a persistent ID before writing reply metadata. Mutations operate on the main document; external file markers must be edited in their own source document.

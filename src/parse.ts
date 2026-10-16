@@ -10,7 +10,7 @@ import type {
   TableRowNode,
   Warning,
 } from "./ast.ts";
-import type { CriticKind, CriticMarker } from "./review.ts";
+import type { ReviewKind, ReviewMarker } from "./review.ts";
 
 import { parseFrontMatter } from "./frontmatter.ts";
 import { SourceText } from "./source.ts";
@@ -49,6 +49,7 @@ export function parse(source: string, options?: ParseOptions): Document {
 
   return {
     meta,
+    comments: meta?.comments ?? {},
     body,
     bibliography,
     warnings,
@@ -88,7 +89,7 @@ function parseBlocks(source: SourceText): BlockNode[] {
       const depth = headingMatch[1].length as 1 | 2 | 3 | 4 | 5 | 6;
       let text = headingMatch[2];
       let id: string | undefined;
-      const idMatch = /^(.*?)\s*\{#([a-zA-Z0-9_-]+)\}\s*$/.exec(text);
+      const idMatch = /^(.*?)\s+\{#([a-zA-Z0-9_-]+)\}\s*$/.exec(text);
       if (idMatch) {
         text = idMatch[1].trimEnd();
         id = idMatch[2];
@@ -127,9 +128,7 @@ function parseBlocks(source: SourceText): BlockNode[] {
     }
 
     const figureMatch =
-      /^::(?:figure|image)\[([^\]]*)\](?:\(([^)]*)\))?(?:\{#([a-zA-Z0-9_-]+)\})?\s*$/.exec(
-        line.trim(),
-      );
+      /^::(?:figure|image)\[(.*)\](?:\(([^)]*)\))?(?:\{#([a-zA-Z0-9_-]+)\})?\s*$/.exec(line.trim());
     if (figureMatch) {
       const attrs = parseAttrs(figureMatch[2] ?? "");
       blocks.push({
@@ -147,7 +146,7 @@ function parseBlocks(source: SourceText): BlockNode[] {
       continue;
     }
 
-    const tableDirMatch = /^::table\[([^\]]*)\](?:\(([^)]*)\))?(?:\{#([a-zA-Z0-9_-]+)\})?\s*$/.exec(
+    const tableDirMatch = /^::table\[(.*)\](?:\(([^)]*)\))?(?:\{#([a-zA-Z0-9_-]+)\})?\s*$/.exec(
       line.trim(),
     );
     if (tableDirMatch) {
@@ -427,33 +426,57 @@ export function parseInlines(source: string): InlineNode[] {
   return parseMappedInlines(new SourceText(source));
 }
 
+type ReviewDirective = {
+  kind: "addition" | "deletion" | "comment";
+  id?: string;
+  contentStart: number;
+  contentEnd: number;
+  end: number;
+};
+
+function readReviewDirective(source: string, start: number): ReviewDirective | undefined {
+  const match = /^:(comment|insert|delete)\[/.exec(source.slice(start));
+  if (!match) return;
+  const contentStart = start + match[0].length;
+  const contentEnd = findBracketEnd(source, contentStart);
+  if (contentEnd === -1) return;
+  const id = /^\{#([a-zA-Z0-9_-]+)\}/.exec(source.slice(contentEnd + 1));
+  return {
+    kind: match[1] === "insert" ? "addition" : match[1] === "delete" ? "deletion" : "comment",
+    id: id?.[1],
+    contentStart,
+    contentEnd,
+    end: contentEnd + 1 + (id?.[0].length ?? 0),
+  };
+}
+
+function findBracketEnd(source: string, contentStart: number): number {
+  let depth = 1;
+  let cursor = contentStart;
+  while (cursor < source.length) {
+    if (source[cursor] === "\\") {
+      cursor += 2;
+      continue;
+    }
+    if (source[cursor] === "`") {
+      const end = source.indexOf("`", cursor + 1);
+      if (end !== -1) {
+        cursor = end + 1;
+        continue;
+      }
+    }
+    if (source[cursor] === "[") depth += 1;
+    if (source[cursor] === "]") {
+      depth -= 1;
+      if (depth === 0) return cursor;
+    }
+    cursor += 1;
+  }
+  return -1;
+}
+
 function parseMappedInlines(input: SourceText): InlineNode[] {
   const source = input.value;
-  const marker = (kind: CriticKind, from: number, to: number, separator?: number): CriticMarker => {
-    const start = input.positions[from];
-    const end = input.positions[to - 1] + 1;
-    const contentStart = start + 3;
-    const contentEnd = end - 3;
-    return {
-      id:
-        input.file === undefined
-          ? String(start)
-          : `file:${encodeURIComponent(input.file)}:${start}`,
-      kind,
-      start,
-      end,
-      contentStart,
-      contentEnd,
-      ...(input.file === undefined ? {} : { file: input.file }),
-      ...(separator === undefined
-        ? { text: input.original.slice(contentStart, contentEnd) }
-        : {
-            oldText: input.original.slice(contentStart, input.positions[separator]),
-            newText: input.original.slice(input.positions[separator + 1] + 1, contentEnd),
-          }),
-    };
-  };
-
   const nodes: InlineNode[] = [];
   let i = 0;
 
@@ -541,48 +564,62 @@ function parseMappedInlines(input: SourceText): InlineNode[] {
       }
     }
 
-    if (source.startsWith("{++", i)) {
-      const end = source.indexOf("++}", i + 3);
-      if (end !== -1) {
+    const directive = readReviewDirective(source, i);
+    if (directive) {
+      const following = readReviewDirective(source, directive.end);
+      const paired =
+        following &&
+        directive.kind !== "comment" &&
+        following.kind !== "comment" &&
+        directive.kind !== following.kind &&
+        (!directive.id || !following.id || directive.id === following.id)
+          ? following
+          : undefined;
+      const end = paired?.end ?? directive.end;
+      const commentId = directive.id ?? paired?.id;
+      const startOffset = input.positions[i];
+      const kind: ReviewKind = paired ? "substitution" : directive.kind;
+      const raw = (part: ReviewDirective) =>
+        input.original.slice(
+          input.positions[part.contentStart],
+          input.positions[part.contentEnd - 1] + 1,
+        );
+      const text = (part: ReviewDirective) =>
+        part.contentStart === part.contentEnd ? "" : raw(part);
+      const review: ReviewMarker = {
+        id:
+          input.file === undefined
+            ? (commentId ?? String(startOffset))
+            : `file:${encodeURIComponent(input.file)}:${commentId ?? startOffset}`,
+        ...(commentId ? { commentId } : {}),
+        ...(input.file === undefined ? {} : { file: input.file }),
+        kind,
+        start: startOffset,
+        end: input.positions[end - 1] + 1,
+        contentStart: input.positions[directive.contentStart],
+        contentEnd: input.positions[directive.contentEnd],
+      };
+      if (paired) {
+        const old = directive.kind === "deletion" ? directive : paired;
+        const next = directive.kind === "addition" ? directive : paired;
+        review.oldText = text(old);
+        review.newText = text(next);
         nodes.push({
-          type: "addition",
-          review: marker("addition", i, end + 3),
-          children: parseMappedInlines(input.slice(i + 3, end)),
+          type: "substitution",
+          review,
+          old: parseMappedInlines(input.slice(old.contentStart, old.contentEnd)),
+          new: parseMappedInlines(input.slice(next.contentStart, next.contentEnd)),
         });
-        i = end + 3;
-        continue;
-      }
-    }
-
-    if (source.startsWith("{--", i)) {
-      const end = source.indexOf("--}", i + 3);
-      if (end !== -1) {
+      } else {
+        review.text = text(directive);
         nodes.push({
-          type: "deletion",
-          review: marker("deletion", i, end + 3),
-          children: parseMappedInlines(input.slice(i + 3, end)),
+          type: directive.kind,
+          review,
+          children: parseMappedInlines(input.slice(directive.contentStart, directive.contentEnd)),
         });
-        i = end + 3;
-        continue;
       }
-    }
-
-    if (source.startsWith("{~~", i)) {
-      const end = source.indexOf("~~}", i + 3);
-      if (end !== -1) {
-        const inner = source.slice(i + 3, end);
-        const sep = inner.indexOf("~>");
-        if (sep !== -1) {
-          nodes.push({
-            type: "substitution",
-            review: marker("substitution", i, end + 3, i + 3 + sep),
-            old: parseMappedInlines(input.slice(i + 3, i + 3 + sep)),
-            new: parseMappedInlines(input.slice(i + 3 + sep + 2, end)),
-          });
-          i = end + 3;
-          continue;
-        }
-      }
+      i = end;
+      continue;
     }
 
     if (source.startsWith("~~", i)) {
@@ -593,32 +630,6 @@ function parseMappedInlines(input: SourceText): InlineNode[] {
           children: parseMappedInlines(input.slice(i + 2, end)),
         });
         i = end + 2;
-        continue;
-      }
-    }
-
-    if (source.startsWith("{==", i)) {
-      const end = source.indexOf("==}", i + 3);
-      if (end !== -1) {
-        nodes.push({
-          type: "highlight",
-          review: marker("highlight", i, end + 3),
-          children: parseMappedInlines(input.slice(i + 3, end)),
-        });
-        i = end + 3;
-        continue;
-      }
-    }
-
-    if (source.startsWith("{>>", i)) {
-      const end = source.indexOf("<<}", i + 3);
-      if (end !== -1) {
-        nodes.push({
-          type: "comment",
-          review: marker("comment", i, end + 3),
-          text: source.slice(i + 3, end),
-        });
-        i = end + 3;
         continue;
       }
     }
@@ -660,7 +671,7 @@ function parseMappedInlines(input: SourceText): InlineNode[] {
     }
 
     if (source[i] === "[") {
-      const labelEnd = source.indexOf("]", i + 1);
+      const labelEnd = findBracketEnd(source, i + 1);
       if (labelEnd !== -1 && source[labelEnd + 1] === "(") {
         const urlEnd = source.indexOf(")", labelEnd + 2);
         if (urlEnd !== -1) {
@@ -766,7 +777,7 @@ function walkInlines(nodes: InlineNode[], visit: (node: BlockNode | InlineNode) 
       case "strikethrough":
       case "addition":
       case "deletion":
-      case "highlight":
+      case "comment":
         walkInlines(node.children, visit);
         break;
       case "substitution":

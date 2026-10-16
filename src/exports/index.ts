@@ -1,5 +1,12 @@
 export { parse } from "../parse.ts";
-export { listCriticMarkers } from "../review.ts";
+export {
+  listReviewMarkers,
+  applyReview,
+  setComment,
+  setReviewComment,
+  deleteComment,
+  replyToReview,
+} from "../review.ts";
 export {
   ACMStyle,
   APAStyle,
@@ -20,9 +27,10 @@ export {
 } from "../citation.ts";
 export type { CitationSegment, CitationStyle, TextRun } from "../citation.ts";
 export type { PdfStyleName } from "../styles.ts";
-export type { CriticKind, CriticMarker } from "../review.ts";
+export type { ReviewAction, ReviewKind, ReviewMarker } from "../review.ts";
 export type {
   Author,
+  CommentMetadata,
   BibEntry,
   BlockNode,
   CitationStyleName,

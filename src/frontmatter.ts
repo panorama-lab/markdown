@@ -1,4 +1,4 @@
-import type { Author, FrontMatter } from "./ast.ts";
+import type { Author, CommentMetadata, FrontMatter } from "./ast.ts";
 
 export function parseFrontMatter(source: string): {
   meta: FrontMatter | null;
@@ -40,7 +40,7 @@ export function parseYamlObject(source: string): Record<string, unknown> {
       throw new Error(`Unexpected indentation at line ${i + 1}`);
     }
 
-    const keyMatch = /^([A-Za-z_][\w-]*)\s*:\s*(.*)$/.exec(line);
+    const keyMatch = /^([A-Za-z0-9_-]+)\s*:\s*(.*)$/.exec(line);
     if (!keyMatch) {
       throw new Error(`Invalid front matter line: ${line}`);
     }
@@ -77,6 +77,22 @@ function toFrontMatter(data: Record<string, unknown>): FrontMatter {
         if (typeof a.corresponding === "boolean") author.corresponding = a.corresponding;
         return author;
       });
+  }
+  if (data.comments && typeof data.comments === "object" && !Array.isArray(data.comments)) {
+    meta.comments = {};
+    for (const [id, value] of Object.entries(data.comments)) {
+      if (value === null) {
+        meta.comments[id] = {};
+        continue;
+      }
+      if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+      const entry: CommentMetadata = {};
+      for (const key of ["by", "at", "body", "re"] as const) {
+        const field = (value as Record<string, unknown>)[key];
+        if (typeof field === "string") entry[key] = field;
+      }
+      meta.comments[id] = entry;
+    }
   }
   return meta;
 }
@@ -151,8 +167,8 @@ function parseSequence(
     const itemIndent = itemMatch[1].length;
     const rest = itemMatch[2];
 
-    if (/^([A-Za-z_][\w-]*)\s*:\s*(.*)$/.test(rest)) {
-      const keyMatch = /^([A-Za-z_][\w-]*)\s*:\s*(.*)$/.exec(rest)!;
+    if (/^([A-Za-z0-9_-]+)\s*:\s*(.*)$/.test(rest)) {
+      const keyMatch = /^([A-Za-z0-9_-]+)\s*:\s*(.*)$/.exec(rest)!;
       const obj: Record<string, unknown> = {};
       const first = parseValue(lines, i, itemIndent, keyMatch[2]);
       obj[keyMatch[1]] = first.value;
@@ -168,7 +184,7 @@ function parseSequence(
         if (nextIndent <= itemIndent) break;
         if (/^\s*-\s+/.test(nextLine) && nextIndent === itemIndent) break;
 
-        const fieldMatch = /^(\s*)([A-Za-z_][\w-]*)\s*:\s*(.*)$/.exec(nextLine);
+        const fieldMatch = /^(\s*)([A-Za-z0-9_-]+)\s*:\s*(.*)$/.exec(nextLine);
         if (!fieldMatch || fieldMatch[1].length <= itemIndent) break;
 
         const field = parseValue(lines, i, fieldMatch[1].length, fieldMatch[3]);
@@ -206,7 +222,7 @@ function parseMapping(
     const indent = leadingSpaces(line);
     if (indent <= parentIndent) break;
 
-    const keyMatch = /^(\s*)([A-Za-z_][\w-]*)\s*:\s*(.*)$/.exec(line);
+    const keyMatch = /^(\s*)([A-Za-z0-9_-]+)\s*:\s*(.*)$/.exec(line);
     if (!keyMatch || keyMatch[1].length <= parentIndent) break;
 
     const result = parseValue(lines, i, keyMatch[1].length, keyMatch[3]);
@@ -256,7 +272,7 @@ function parseBlockScalar(
 
 function parseScalar(raw: string): string | boolean | number | null {
   if ((raw.startsWith('"') && raw.endsWith('"')) || (raw.startsWith("'") && raw.endsWith("'"))) {
-    return raw.slice(1, -1);
+    return raw.startsWith('"') ? JSON.parse(raw) : raw.slice(1, -1).replace(/''/g, "'");
   }
 
   if (raw === "true") return true;

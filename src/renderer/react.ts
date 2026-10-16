@@ -286,8 +286,6 @@ function renderInline(node: InlineNode, key: number | string, ctx: Ctx): ReactNo
       return renderReviewDeletion(node, key, ctx, node.review?.id ?? String(ctx.reviewSeq++));
     case "substitution":
       return renderReviewSubstitution(node, key, ctx, node.review?.id ?? String(ctx.reviewSeq++));
-    case "highlight":
-      return renderReviewHighlight(node, key, ctx, node.review?.id ?? String(ctx.reviewSeq++));
     case "comment":
       return renderReviewComment(node, key, ctx, node.review?.id ?? String(ctx.reviewSeq++));
     default:
@@ -297,16 +295,6 @@ function renderInline(node: InlineNode, key: number | string, ctx: Ctx): ReactNo
 
 function reviewProps(kind: string, id?: string): Record<string, string> {
   return { "data-review": kind, ...(id !== undefined ? { "data-review-id": id } : {}) };
-}
-
-function reviewAnnotation(kind: "addition" | "deletion" | "substitution"): ReactNode {
-  const label =
-    kind === "addition"
-      ? "Suggested addition"
-      : kind === "deletion"
-        ? "Suggested deletion"
-        : "Suggested replacement";
-  return createElement("span", { "data-review-annotation": kind }, label);
 }
 
 function renderReviewAddition(
@@ -331,7 +319,6 @@ function renderReviewAddition(
       reviewProps("addition", id),
       ...node.children.map((c, i) => renderInline(c, i, ctx)),
     ),
-    reviewAnnotation("addition"),
   );
 }
 
@@ -357,7 +344,6 @@ function renderReviewDeletion(
       reviewProps("deletion", id),
       ...node.children.map((c, i) => renderInline(c, i, ctx)),
     ),
-    reviewAnnotation("deletion"),
   );
 }
 
@@ -383,27 +369,6 @@ function renderReviewSubstitution(
       " → ",
       createElement("ins", null, ...node.new.map((c, i) => renderInline(c, i, ctx))),
     ),
-    reviewAnnotation("substitution"),
-  );
-}
-
-function renderReviewHighlight(
-  node: Extract<InlineNode, { type: "highlight" }>,
-  key: number | string,
-  ctx: Ctx,
-  id: string,
-): ReactNode {
-  if (ctx.reviewMode !== "markup") {
-    return createElement(
-      Fragment,
-      { key },
-      ...node.children.map((c, i) => renderInline(c, i, ctx)),
-    );
-  }
-  return createElement(
-    "mark",
-    { key, ...reviewProps("highlight", id) },
-    ...node.children.map((c, i) => renderInline(c, i, ctx)),
   );
 }
 
@@ -413,7 +378,12 @@ function renderReviewComment(
   ctx: Ctx,
   id: string,
 ): ReactNode {
-  if (ctx.reviewMode !== "markup") return null;
+  if (ctx.reviewMode !== "markup")
+    return createElement(
+      Fragment,
+      { key },
+      ...node.children.map((c, i) => renderInline(c, i, ctx)),
+    );
   return createElement(
     "span",
     {
@@ -421,9 +391,7 @@ function renderReviewComment(
       ...reviewProps("comment", id),
       "data-comment": true,
     },
-    createElement("span", { "data-comment-label": true }, "Comment:"),
-    " ",
-    node.text,
+    ...node.children.map((c, i) => renderInline(c, i, ctx)),
   );
 }
 

@@ -1,4 +1,4 @@
-import type { CriticMarker } from "./review.ts";
+import type { ReviewMarker } from "./review.ts";
 
 export type Author = {
   name: string;
@@ -8,7 +8,15 @@ export type Author = {
   corresponding?: boolean;
 };
 
+export type CommentMetadata = {
+  by?: string;
+  at?: string;
+  body?: string;
+  re?: string;
+};
+
 export type FrontMatter = {
+  comments?: Record<string, CommentMetadata>;
   title?: string;
   authors?: Author[];
   abstract?: string;
@@ -80,33 +88,27 @@ export type FootnoteRefNode = {
 
 export type AdditionNode = {
   type: "addition";
-  review?: CriticMarker;
+  review?: ReviewMarker;
   children: InlineNode[];
 };
 
 export type DeletionNode = {
   type: "deletion";
-  review?: CriticMarker;
+  review?: ReviewMarker;
   children: InlineNode[];
 };
 
 export type SubstitutionNode = {
   type: "substitution";
-  review?: CriticMarker;
+  review?: ReviewMarker;
   old: InlineNode[];
   new: InlineNode[];
 };
 
-export type HighlightNode = {
-  type: "highlight";
-  review?: CriticMarker;
-  children: InlineNode[];
-};
-
 export type CommentNode = {
   type: "comment";
-  review?: CriticMarker;
-  text: string;
+  review?: ReviewMarker;
+  children: InlineNode[];
 };
 
 export type InlineNode =
@@ -123,7 +125,6 @@ export type InlineNode =
   | AdditionNode
   | DeletionNode
   | SubstitutionNode
-  | HighlightNode
   | CommentNode;
 
 export type HeadingNode = {
@@ -233,6 +234,7 @@ export type BlockNode =
   | FootnoteDefinitionNode;
 
 export type Document = {
+  comments: Record<string, CommentMetadata>;
   meta: FrontMatter | null;
   body: BlockNode[];
   bibliography: BibEntry[];
