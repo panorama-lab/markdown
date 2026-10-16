@@ -1,3 +1,5 @@
+<img src="assets/icon.png" alt="Panorama Markdown app icon" width="96" height="96" />
+
 # Panorama Markdown
 
 > [!NOTE]
@@ -19,7 +21,7 @@ It is designed to be friendly to LLMs while staying simple and comfortable for p
 
 The specification is still in progress, but the current format is documented and ready to explore.
 
-Each paper lives in a flat directory of files. The full directory layout and Markdown syntax are defined in **[SPEC.md](packages/markdown/SPEC.md)**.
+Each paper lives in a flat directory of files. The full directory layout and Markdown syntax are defined in **[SPEC.md](SPEC.md)**.
 
 ## Typesetting
 
@@ -31,11 +33,11 @@ Download the latest editor build from the [GitHub releases page](https://github.
 
 After downloading, open or create a paper directory to start editing and exporting PDFs.
 
+Open the [demo directory](demo) in the editor to explore a [sample paper](demo/content.md) with suggested insertions, deletions, replacements, and threaded comments. Review messages and replies are stored in the paper's front matter alongside the inline review directives.
+
 ![Panorama Markdown screenshot](assets/screenshot.png)
 
-![Add Agent screenshot](assets/screenshot-add-agent.png)
-
-Use the Agent button in the top-right to copy prompts to your agent (Codex, Claude) and collaborate directly from the agent.
+![Panorama Markdown suggested edits and comments](assets/screenshot-review.png)
 
 ## Community
 

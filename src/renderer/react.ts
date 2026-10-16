@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { createElement, Fragment } from "react";
 
 import type {
+  BibEntry,
   BlockNode,
   Document,
   InlineNode,
@@ -11,18 +12,31 @@ import type {
   TableRowNode,
 } from "../ast.ts";
 
+import { resolveCitationStyle, type CitationStyle } from "../citation.ts";
+import { collectHeadings, headingSlug, inlineText, type TocEntry } from "./headings.ts";
+
 export function render(ast: Document, options?: RenderOptions): ReactNode {
   const assets = options?.assets ?? {};
   const reviewMode: ReviewMode = options?.reviewMode ?? "markup";
+  const citationStyle = resolveCitationStyle(options?.citationStyle);
+  const bibByKey = new Map(ast.bibliography.map((entry) => [entry.key, entry]));
   const footnoteDefs = collectFootnotes(ast.body);
+  const toc = ast.body.some((b) => b.type === "tableOfContents") ? collectHeadings(ast.body) : [];
+  const ctx: Ctx = {
+    assets,
+    reviewMode,
+    bibliography: ast.bibliography,
+    citationStyle,
+    bibByKey,
+    toc,
+    reviewSeq: 0,
+  };
 
   return createElement(
     "article",
     null,
     renderMeta(ast),
-    ...ast.body.map((node, i) =>
-      renderBlock(node, i, { assets, reviewMode, bibliography: ast.bibliography }),
-    ),
+    ...ast.body.map((node, i) => renderBlock(node, i, ctx)),
     footnoteDefs.length > 0
       ? createElement(
           "section",
@@ -35,9 +49,7 @@ export function render(ast: Document, options?: RenderOptions): ReactNode {
               createElement(
                 "li",
                 { key: def.id, id: `fn-${def.id}` },
-                ...def.children.map((c, i) =>
-                  renderBlock(c, i, { assets, reviewMode, bibliography: ast.bibliography }),
-                ),
+                ...def.children.map((c, i) => renderBlock(c, i, ctx)),
                 createElement("a", { href: `#fnref-${def.id}` }, "↩"),
               ),
             ),
@@ -91,6 +103,10 @@ type Ctx = {
   assets: Record<string, string>;
   reviewMode: ReviewMode;
   bibliography: Document["bibliography"];
+  citationStyle: CitationStyle;
+  bibByKey: Map<string, BibEntry>;
+  toc: TocEntry[];
+  reviewSeq: number;
 };
 
 function renderBlock(node: BlockNode, key: number | string, ctx: Ctx): ReactNode {
@@ -100,7 +116,7 @@ function renderBlock(node: BlockNode, key: number | string, ctx: Ctx): ReactNode
       const tag = `h${level}` as "h1" | "h2" | "h3" | "h4" | "h5" | "h6";
       return createElement(
         tag,
-        { key, id: node.id },
+        { key, id: node.id ?? headingSlug(inlineText(node.children)) },
         ...node.children.map((c, i) => renderInline(c, i, ctx)),
       );
     }
@@ -179,12 +195,29 @@ function renderBlock(node: BlockNode, key: number | string, ctx: Ctx): ReactNode
           "ol",
           null,
           ...ctx.bibliography.map((entry) =>
-            createElement("li", { key: entry.key, id: `ref-${entry.key}` }, formatBibEntry(entry)),
+            createElement(
+              "li",
+              { key: entry.key, id: `ref-${entry.key}` },
+              ...ctx.citationStyle
+                .reference(entry)
+                .map((run, i) =>
+                  run.italic ? createElement("em", { key: i }, run.text) : run.text,
+                ),
+            ),
           ),
         ),
       );
     case "pagebreak":
       return createElement("hr", { key, "data-pagebreak": true });
+    case "tableOfContents": {
+      const entries = ctx.toc.filter((h) => h.depth <= node.levels);
+      return createElement(
+        "nav",
+        { key, id: node.id, "data-toc": true },
+        node.title ? createElement("h2", null, node.title) : null,
+        entries.length > 0 ? createElement("ul", null, ...renderTocItems(entries)) : null,
+      );
+    }
     case "footnoteDefinition":
       return null;
     default:
@@ -227,17 +260,18 @@ function renderInline(node: InlineNode, key: number | string, ctx: Ctx): ReactNo
       return createElement("s", { key }, ...node.children.map((c, i) => renderInline(c, i, ctx)));
     case "break":
       return createElement("br", { key });
-    case "cite":
+    case "cite": {
+      const segments = ctx.citationStyle.inText(node.keys, (k) => ctx.bibByKey.get(k));
       return createElement(
         "cite",
         { key },
-        "[",
-        ...node.keys.flatMap((k, i) => [
-          i > 0 ? ", " : null,
-          createElement("a", { key: k, href: `#ref-${k}` }, k),
-        ]),
-        "]",
+        ...segments.map((segment, i) =>
+          segment.key
+            ? createElement("a", { key: i, href: `#ref-${segment.key}` }, segment.text)
+            : segment.text,
+        ),
       );
+    }
     case "ref":
       return createElement("a", { key, href: node.id ? `#${node.id}` : undefined }, node.label);
     case "footnoteRef":
@@ -247,24 +281,27 @@ function renderInline(node: InlineNode, key: number | string, ctx: Ctx): ReactNo
         createElement("a", { href: `#fn-${node.id}` }, node.id),
       );
     case "addition":
-      return renderReviewAddition(node, key, ctx);
+      return renderReviewAddition(node, key, ctx, node.review?.id ?? String(ctx.reviewSeq++));
     case "deletion":
-      return renderReviewDeletion(node, key, ctx);
+      return renderReviewDeletion(node, key, ctx, node.review?.id ?? String(ctx.reviewSeq++));
     case "substitution":
-      return renderReviewSubstitution(node, key, ctx);
-    case "highlight":
-      return renderReviewHighlight(node, key, ctx);
+      return renderReviewSubstitution(node, key, ctx, node.review?.id ?? String(ctx.reviewSeq++));
     case "comment":
-      return renderReviewComment(node, key, ctx);
+      return renderReviewComment(node, key, ctx, node.review?.id ?? String(ctx.reviewSeq++));
     default:
       return null;
   }
+}
+
+function reviewProps(kind: string, id?: string): Record<string, string> {
+  return { "data-review": kind, ...(id !== undefined ? { "data-review-id": id } : {}) };
 }
 
 function renderReviewAddition(
   node: Extract<InlineNode, { type: "addition" }>,
   key: number | string,
   ctx: Ctx,
+  id: string,
 ): ReactNode {
   if (ctx.reviewMode === "clean") return null;
   if (ctx.reviewMode === "accepted") {
@@ -274,13 +311,22 @@ function renderReviewAddition(
       ...node.children.map((c, i) => renderInline(c, i, ctx)),
     );
   }
-  return createElement("ins", { key }, ...node.children.map((c, i) => renderInline(c, i, ctx)));
+  return createElement(
+    Fragment,
+    { key },
+    createElement(
+      "ins",
+      reviewProps("addition", id),
+      ...node.children.map((c, i) => renderInline(c, i, ctx)),
+    ),
+  );
 }
 
 function renderReviewDeletion(
   node: Extract<InlineNode, { type: "deletion" }>,
   key: number | string,
   ctx: Ctx,
+  id: string,
 ): ReactNode {
   if (ctx.reviewMode === "accepted") return null;
   if (ctx.reviewMode === "clean") {
@@ -290,13 +336,22 @@ function renderReviewDeletion(
       ...node.children.map((c, i) => renderInline(c, i, ctx)),
     );
   }
-  return createElement("del", { key }, ...node.children.map((c, i) => renderInline(c, i, ctx)));
+  return createElement(
+    Fragment,
+    { key },
+    createElement(
+      "del",
+      reviewProps("deletion", id),
+      ...node.children.map((c, i) => renderInline(c, i, ctx)),
+    ),
+  );
 }
 
 function renderReviewSubstitution(
   node: Extract<InlineNode, { type: "substitution" }>,
   key: number | string,
   ctx: Ctx,
+  id: string,
 ): ReactNode {
   if (ctx.reviewMode === "clean") {
     return createElement(Fragment, { key }, ...node.old.map((c, i) => renderInline(c, i, ctx)));
@@ -305,80 +360,61 @@ function renderReviewSubstitution(
     return createElement(Fragment, { key }, ...node.new.map((c, i) => renderInline(c, i, ctx)));
   }
   return createElement(
-    "span",
-    { key, "data-substitution": true },
-    createElement("del", null, ...node.old.map((c, i) => renderInline(c, i, ctx))),
-    createElement("ins", null, ...node.new.map((c, i) => renderInline(c, i, ctx))),
+    Fragment,
+    { key },
+    createElement(
+      "span",
+      { "data-substitution": true, ...reviewProps("substitution", id) },
+      createElement("del", null, ...node.old.map((c, i) => renderInline(c, i, ctx))),
+      createElement("ins", null, ...node.new.map((c, i) => renderInline(c, i, ctx))),
+    ),
   );
-}
-
-function renderReviewHighlight(
-  node: Extract<InlineNode, { type: "highlight" }>,
-  key: number | string,
-  ctx: Ctx,
-): ReactNode {
-  if (ctx.reviewMode !== "markup") {
-    return createElement(
-      Fragment,
-      { key },
-      ...node.children.map((c, i) => renderInline(c, i, ctx)),
-    );
-  }
-  return createElement("mark", { key }, ...node.children.map((c, i) => renderInline(c, i, ctx)));
 }
 
 function renderReviewComment(
   node: Extract<InlineNode, { type: "comment" }>,
   key: number | string,
   ctx: Ctx,
+  id: string,
 ): ReactNode {
-  if (ctx.reviewMode !== "markup") return null;
+  if (ctx.reviewMode !== "markup")
+    return createElement(
+      Fragment,
+      { key },
+      ...node.children.map((c, i) => renderInline(c, i, ctx)),
+    );
   return createElement(
     "span",
     {
       key,
+      ...reviewProps("comment", id),
       "data-comment": true,
-      "data-comment-id": node.meta?.id,
-      "data-comment-by": node.meta?.by,
-      title: node.text,
     },
-    `[${node.meta?.by ?? "comment"}: ${node.text}]`,
+    ...node.children.map((c, i) => renderInline(c, i, ctx)),
   );
 }
 
-function inlineText(nodes: InlineNode[]): string {
-  return nodes
-    .map((n) => {
-      switch (n.type) {
-        case "text":
-          return n.value;
-        case "strong":
-        case "emphasis":
-        case "link":
-        case "strikethrough":
-        case "addition":
-        case "deletion":
-        case "highlight":
-          return inlineText(n.children);
-        case "inlineCode":
-          return n.value;
-        case "substitution":
-          return inlineText(n.old);
-        default:
-          return "";
-      }
-    })
-    .join("");
-}
-
-function formatBibEntry(entry: Document["bibliography"][number]): string {
-  const f = entry.fields;
-  const author = f.author ?? "";
-  const title = f.title ?? "";
-  const year = f.year ?? "";
-  const journal = f.journal ?? f.booktitle ?? "";
-  const parts = [author, title && `"${title}"`, journal, year].filter(Boolean);
-  return parts.join(". ") + (parts.length ? "." : entry.key);
+function renderTocItems(entries: TocEntry[]): ReactNode[] {
+  const items: ReactNode[] = [];
+  let i = 0;
+  const depth = entries[0]?.depth ?? 1;
+  while (i < entries.length) {
+    const entry = entries[i];
+    if (entry.depth < depth) break;
+    let j = i + 1;
+    while (j < entries.length && entries[j].depth > depth) j += 1;
+    const children = entries.slice(i + 1, j);
+    items.push(
+      createElement(
+        "li",
+        { key: entry.id },
+        createElement("a", { href: `#${entry.id}` }, entry.text),
+        children.length > 0 ? createElement("ul", null, ...renderTocItems(children)) : null,
+      ),
+    );
+    i = j;
+  }
+  return items;
 }
 
 function collectFootnotes(body: BlockNode[]): Extract<BlockNode, { type: "footnoteDefinition" }>[] {

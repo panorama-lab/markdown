@@ -9,7 +9,6 @@ describe("parse document shape", () => {
       meta: null,
       body: expect.any(Array),
       bibliography: [],
-      reviews: [],
       warnings: [],
     });
   });
@@ -195,6 +194,17 @@ describe("citations and references", () => {
     expect(doc.bibliography.map((e) => e.key)).toEqual(["wang2023", "wang2024"]);
   });
 
+  it("parses numeric inline citations", () => {
+    const doc = parse("Prior work [1] and follow-up work [2, 3].");
+    const p = doc.body[0];
+    expect(p.type).toBe("paragraph");
+    if (p.type !== "paragraph") return;
+    expect(p.children.filter((c) => c.type === "cite")).toEqual([
+      { type: "cite", keys: ["1"] },
+      { type: "cite", keys: ["2", "3"] },
+    ]);
+  });
+
   it("warns on unknown cite keys when bib is present", () => {
     const doc = parse(":cite[missing]\n", { files: { "references.bib": bib } });
     expect(doc.warnings.some((w) => w.code === "unknown-cite-key")).toBe(true);
@@ -224,6 +234,39 @@ describe("pagebreak", () => {
   it("parses leaf directive", () => {
     const doc = parse("::pagebreak\n");
     expect(doc.body[0]).toEqual({ type: "pagebreak" });
+  });
+});
+
+describe("table of contents", () => {
+  it("parses directive with title and levels", () => {
+    const doc = parse("::table_of_contents[Table of contents]{levels=3}\n");
+    expect(doc.body[0]).toEqual({
+      type: "tableOfContents",
+      title: "Table of contents",
+      levels: 3,
+      id: undefined,
+    });
+  });
+
+  it("defaults levels to 3 and allows an id", () => {
+    const doc = parse("::table_of_contents[Contents]{#toc}\n");
+    expect(doc.body[0]).toMatchObject({
+      type: "tableOfContents",
+      title: "Contents",
+      levels: 3,
+      id: "toc",
+    });
+  });
+
+  it("clamps levels to the 1-6 range", () => {
+    const doc = parse("::table_of_contents[Contents]{levels=9}\n");
+    expect(doc.body[0]).toMatchObject({ type: "tableOfContents", levels: 6 });
+  });
+
+  it("does not leak into paragraphs", () => {
+    const doc = parse("::table_of_contents\n\nAfter\n");
+    expect(doc.body[0]).toMatchObject({ type: "tableOfContents" });
+    expect(doc.body[1]).toMatchObject({ type: "paragraph" });
   });
 });
 
@@ -295,11 +338,9 @@ describe("figures and tables", () => {
   });
 });
 
-describe("CriticMarkup", () => {
-  it("parses addition deletion substitution highlight comment", () => {
-    const doc = parse(
-      '{++inserted++} {--removed--} {~~old~>new~~} {==hl==}{>>note<<}{id="c1" by="user" at="2026-01-01T00:00:00.000Z"}',
-    );
+describe("review directives", () => {
+  it("parses addition deletion substitution comment", () => {
+    const doc = parse(":insert[inserted] :delete[removed] :delete[old]:insert[new] :comment[note]");
     const p = doc.body[0];
     expect(p.type).toBe("paragraph");
     if (p.type !== "paragraph") return;
@@ -307,23 +348,20 @@ describe("CriticMarkup", () => {
     expect(types).toContain("addition");
     expect(types).toContain("deletion");
     expect(types).toContain("substitution");
-    expect(types).toContain("highlight");
     expect(types).toContain("comment");
     const comment = p.children.find((c) => c.type === "comment");
-    expect(comment).toMatchObject({
-      type: "comment",
-      text: "note",
-      meta: { id: "c1", by: "user", at: "2026-01-01T00:00:00.000Z" },
-    });
+    expect(comment).toMatchObject({ type: "comment", children: [{ type: "text", value: "note" }] });
   });
 
-  it("collects review threads with re", () => {
-    const doc = parse(
-      `{==text==}{>>q<<}{id="c3" by="user" at="2026-04-30T20:18:51.163Z"}{>>a<<}{id="c4" by="AI" at="2026-04-30T20:19:39.000Z" re="c3"}`,
-    );
-    expect(doc.reviews).toHaveLength(1);
-    expect(doc.reviews[0].id).toBe("c3");
-    expect(doc.reviews[0].comments.map((c) => c.id)).toEqual(["c3", "c4"]);
+  it("leaves directives inside code as literal text", () => {
+    const doc = parse("Use `:insert[not a marker]` in code.\n\n```\n:delete[also literal]\n```\n");
+    const p = doc.body[0];
+    expect(p.type).toBe("paragraph");
+    if (p.type !== "paragraph") return;
+    expect(p.children.some((c) => c.type === "addition")).toBe(false);
+    const code = p.children.find((c) => c.type === "inlineCode");
+    expect(code).toMatchObject({ type: "inlineCode", value: ":insert[not a marker]" });
+    expect(doc.body[1]).toMatchObject({ type: "code", value: ":delete[also literal]" });
   });
 });
 

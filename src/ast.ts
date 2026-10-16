@@ -1,3 +1,5 @@
+import type { ReviewMarker } from "./review.ts";
+
 export type Author = {
   name: string;
   email?: string;
@@ -6,7 +8,15 @@ export type Author = {
   corresponding?: boolean;
 };
 
+export type CommentMetadata = {
+  by?: string;
+  at?: string;
+  body?: string;
+  re?: string;
+};
+
 export type FrontMatter = {
+  comments?: Record<string, CommentMetadata>;
   title?: string;
   authors?: Author[];
   abstract?: string;
@@ -17,19 +27,6 @@ export type BibEntry = {
   key: string;
   type: string;
   fields: Record<string, string>;
-};
-
-export type ReviewComment = {
-  id: string;
-  by: string;
-  at: string;
-  re?: string;
-  text: string;
-};
-
-export type ReviewThread = {
-  id: string;
-  comments: ReviewComment[];
 };
 
 export type Warning = {
@@ -91,36 +88,27 @@ export type FootnoteRefNode = {
 
 export type AdditionNode = {
   type: "addition";
+  review?: ReviewMarker;
   children: InlineNode[];
 };
 
 export type DeletionNode = {
   type: "deletion";
+  review?: ReviewMarker;
   children: InlineNode[];
 };
 
 export type SubstitutionNode = {
   type: "substitution";
+  review?: ReviewMarker;
   old: InlineNode[];
   new: InlineNode[];
 };
 
-export type HighlightNode = {
-  type: "highlight";
-  children: InlineNode[];
-};
-
-export type CommentMeta = {
-  id: string;
-  by: string;
-  at: string;
-  re?: string;
-};
-
 export type CommentNode = {
   type: "comment";
-  text: string;
-  meta?: CommentMeta;
+  review?: ReviewMarker;
+  children: InlineNode[];
 };
 
 export type InlineNode =
@@ -137,7 +125,6 @@ export type InlineNode =
   | AdditionNode
   | DeletionNode
   | SubstitutionNode
-  | HighlightNode
   | CommentNode;
 
 export type HeadingNode = {
@@ -218,6 +205,13 @@ export type PagebreakNode = {
   type: "pagebreak";
 };
 
+export type TableOfContentsNode = {
+  type: "tableOfContents";
+  title: string;
+  levels: number;
+  id?: string;
+};
+
 export type FootnoteDefinitionNode = {
   type: "footnoteDefinition";
   id: string;
@@ -236,13 +230,14 @@ export type BlockNode =
   | TableNode
   | ReferencesNode
   | PagebreakNode
+  | TableOfContentsNode
   | FootnoteDefinitionNode;
 
 export type Document = {
+  comments: Record<string, CommentMetadata>;
   meta: FrontMatter | null;
   body: BlockNode[];
   bibliography: BibEntry[];
-  reviews: ReviewThread[];
   warnings: Warning[];
 };
 
@@ -251,6 +246,8 @@ export type ParseOptions = {
 };
 
 export type ReviewMode = "markup" | "clean" | "accepted";
+
+export type CitationStyleName = "apa";
 
 export type PageSize =
   | "LETTER"
@@ -287,6 +284,7 @@ export type HeadingFormat = {
 export type RenderOptions = {
   assets?: Record<string, string>;
   reviewMode?: ReviewMode;
+  citationStyle?: CitationStyleName;
   pageSize?: PageSize;
   margin?: PaperMargin;
   fontFamily?: string;
@@ -295,5 +293,9 @@ export type RenderOptions = {
   paragraphIndent?: number;
   textAlign?: "left" | "center" | "right" | "justify";
   titleAlign?: "left" | "center" | "right";
+  titleFontSize?: number;
+  keywordsLabel?: string;
+  columns?: number;
+  columnGap?: number;
   headings?: Partial<Record<1 | 2 | 3 | 4 | 5 | 6, HeadingFormat>>;
 };
