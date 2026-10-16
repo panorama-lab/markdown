@@ -16,6 +16,8 @@ It is designed to be friendly to LLMs while staying simple and comfortable for p
 - **Citations** via `:cite` and a `::references` block backed by BibTeX
 - **Figures and tables** are imported with directive syntax instead of embedded directly in the Markdown
 - **Cross-references** via `:ref` to labeled sections, figures, and tables
+- **Comments** anchored to specific passages via `:comment`, with author metadata and threaded replies
+- **Suggested edits** via `:insert` and `:delete` for insertions, deletions, and replacements that can be accepted or rejected in the editor
 
 ## Specification
 
