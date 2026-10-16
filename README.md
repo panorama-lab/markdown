@@ -1,3 +1,5 @@
+<img src="assets/icon.png" alt="Panorama Markdown app icon" width="96" height="96" />
+
 # Panorama Markdown
 
 > [!NOTE]
@@ -31,7 +33,11 @@ Download the latest editor build from the [GitHub releases page](https://github.
 
 After downloading, open or create a paper directory to start editing and exporting PDFs.
 
+Open the [demo directory](demo) in the editor to explore a [sample paper](demo/content.md) with suggested insertions, deletions, replacements, and threaded comments. Review messages and replies are stored in the paper's front matter alongside the inline review directives.
+
 ![Panorama Markdown screenshot](assets/screenshot.png)
+
+![Panorama Markdown suggested edits and comments](assets/screenshot-review.png)
 
 ## Community
 
