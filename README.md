@@ -1,63 +1,47 @@
-# @panorama-lab/markdown
+# Panorama Markdown
 
-Panorama Markdown parser and renderers for academic papers
+> [!NOTE]
+> Panorama Markdown is preview software, and feedback is very welcome.
 
-See [SPEC.md](./SPEC.md) for the full dialect.
+Panorama Markdown is a lightweight dialect for writing academic papers and representing parsed PDF papers in Markdown.
 
-## Install
+It is designed to be friendly to LLMs while staying simple and comfortable for people to write.
 
-```sh
-pnpm add @panorama-lab/markdown
-```
+## Built on Markdown
 
-## Parse
+- **Standard Markdown** for headings, paragraphs, lists, links, footnotes, and emphasis
+- **YAML front matter** for titles, authors, abstracts, and keywords
+- **Citations** via `:cite` and a `::references` block backed by BibTeX
+- **Figures and tables** are imported with directive syntax instead of embedded directly in the Markdown
+- **Cross-references** via `:ref` to labeled sections, figures, and tables
 
-```ts
-import { parse } from "@panorama-lab/markdown";
+## Specification
 
-const doc = parse(source, { files: { "references.bib": bib } });
-```
+The specification is still in progress, but the current format is documented and ready to explore.
 
-## React render
+Each paper lives in a flat directory of files. The full directory layout and Markdown syntax are defined in **[SPEC.md](packages/markdown/SPEC.md)**.
 
-```ts
-import { parse } from "@panorama-lab/markdown";
-import { render } from "@panorama-lab/markdown/react";
+## Typesetting
 
-const tree = render(parse(source), { reviewMode: "markup" });
-```
+Markdown defines the content, while layout and styling stay separate. The current tooling can export APA-style PDFs, with support for additional styles planned.
 
-`reviewMode`: `"markup"` | `"clean"` | `"accepted"`.
+## Editor
 
-Citations and the references list render in APA style by default (`citationStyle: "apa"`), e.g. `(Smith, 2024)` and `Smith, J. (2024). Title. Journal, 12(3), 45–50.`.
+Download the latest editor build from the [GitHub releases page](https://github.com/panorama-lab/markdown/releases).
 
-## Review markers
+After downloading, open or create a paper directory to start editing and exporting PDFs.
 
-`listReviewMarkers(source)` lists the review spans recognized by the parser, including nested spans. Escaped text, code, front matter, and link destinations do not produce review markers.
+![Panorama Markdown screenshot](assets/screenshot.png)
 
-```ts
-import { listReviewMarkers, parse } from "@panorama-lab/markdown";
+![Add Agent screenshot](assets/screenshot-add-agent.png)
 
-const document = parse(source, { files });
-const markers = listReviewMarkers(document);
-const editableMarkers = markers.filter((marker) => marker.file === undefined);
-```
+Use the Agent button in the top-right to copy prompts to your agent (Codex, Claude) and collaborate directly from the agent.
 
-Write `:comment[original text]{#c1}`, `:insert[new text]{#c2}`, or `:delete[old text]{#c3}`. Adjacent insert/delete directives form one replacement, in either order, with a shared ID or an ID on either half. Store author (`by`), timestamp (`at`), message (`body`), and reply parent (`re`) in the ID-keyed frontmatter `comments` mapping. `parse` returns both the body AST and `document.comments`.
+## Community
 
-Each marker has an `id` matching the React renderer's `data-review-id`, plus `start`, `end`, `contentStart`, and `contentEnd` offsets into the original source. Explicit IDs persist across edits; anonymous IDs identify source locations and do not depend on render order. Reparse after editing to refresh IDs and offsets. Markers from external table files include a `file` path and have IDs scoped to that file; their offsets refer to that file's content.
-
-Use `applyReview` to accept/reject suggestions or delete comment annotations, `setComment` to edit metadata, and `replyToReview` to add replies. Resolving a suggestion or deleting a comment removes its metadata thread and descendants. Deleting an annotation preserves its original text.
-
-## PDF render
-
-```ts
-import { parse } from "@panorama-lab/markdown";
-import { render } from "@panorama-lab/markdown/pdf";
-
-const element = render(parse(source), { reviewMode: "accepted" });
-```
+- Report bugs, ask questions, or request features on [GitHub Issues](https://github.com/panorama-lab/markdown/issues)
+- Join the [Discord server](https://discord.gg/PtgNPuHMFs) to share feedback and discuss the project
 
 ## License
 
-Apache-2.0
+Apache 2.0
