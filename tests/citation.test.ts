@@ -4,6 +4,13 @@ import type { BibEntry } from "../src/ast.ts";
 
 import { formatInTextCitation, formatReference, resolveCitationStyle } from "../src/citation.ts";
 
+it("preserves unstructured references extracted from PDFs", () => {
+  const note = "Verbert, K. et al. 2020. Learning analytics dashboards.";
+  expect(formatReference({ key: "ref-1", type: "misc", fields: { note } })).toEqual([
+    { text: note, italic: false },
+  ]);
+});
+
 const entries: Record<string, BibEntry> = {
   smith2024: {
     key: "smith2024",

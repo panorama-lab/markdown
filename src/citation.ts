@@ -92,6 +92,7 @@ function inTextLabel(entry: BibEntry | undefined, key: string): string {
 
 export function formatReference(entry: BibEntry): TextRun[] {
   const f = entry.fields;
+  if (f.note && !f.author && !f.title && !f.year) return [{ text: f.note, italic: false }];
   const runs: TextRun[] = [];
   const push = (text: string, italic = false) => {
     if (text) runs.push({ text, italic });
