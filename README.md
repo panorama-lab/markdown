@@ -25,16 +25,6 @@ The specification is still in progress, but the current format is documented and
 
 Each paper lives in a flat directory of files. The full directory layout and Markdown syntax are defined in **[SPEC.md](SPEC.md)**.
 
-## React renderer
-
-```tsx
-import { render } from "@panorama-lab/markdown/react";
-
-render(document, { assets, tableOfContents: true });
-```
-
-Enable `tableOfContents` to show a sticky sidebar with links to the document’s headings. The HeroUI “Hide contents” / “Show contents” button toggles it, and heading depth controls indentation. Repeated headings receive unique anchors. Documents without headings omit the sidebar. Existing calls without this option keep their article-only layout. The PDF playground enables the sidebar in its Render tab.
-
 ## Typesetting
 
 Markdown defines the content, while layout and styling stay separate. The current tooling can export APA-style PDFs, with support for additional styles planned.

@@ -38,7 +38,6 @@
     "prepublishOnly": "vp run build"
   },
   "devDependencies": {
-    "@heroui/react": "catalog:",
     "@react-pdf/renderer": "catalog:",
     "@types/node": "^26.1.1",
     "@types/react": "catalog:",
@@ -51,7 +50,6 @@
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "@heroui/react": "catalog:",
     "@react-pdf/renderer": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:"

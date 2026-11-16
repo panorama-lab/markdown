@@ -1,4 +1,3 @@
-import { Button } from "@heroui/react";
 import { createElement, useId, useState, type ReactNode } from "react";
 
 import type { TocEntry } from "./headings.ts";
@@ -17,13 +16,22 @@ export function TableOfContentsLayout({ entries, children }: Props) {
       "div",
       { className: "not-prose", style: { marginBottom: 16 } },
       createElement(
-        Button,
+        "button",
         {
-          size: "sm",
-          variant: "ghost",
+          type: "button",
+          style: {
+            background: "transparent",
+            color: "inherit",
+            border: "1px solid currentColor",
+            borderRadius: 6,
+            padding: "6px 10px",
+            font: "inherit",
+            fontSize: 12,
+            cursor: "pointer",
+          },
           "aria-expanded": expanded,
           "aria-controls": sidebarId,
-          onPress: () => setExpanded((value) => !value),
+          onClick: () => setExpanded((value) => !value),
         },
         expanded ? "Hide contents" : "Show contents",
       ),
