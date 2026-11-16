@@ -25,6 +25,7 @@ export function parse(source: string, options?: ParseOptions): Document {
     warnings.push({ code: "invalid-front-matter", message: error });
   }
   const body = parseBlocks(new SourceText(source).slice(source.length - afterFront.length));
+  resolveAssets(body, files, warnings);
   const citeKeys = collectCiteKeys(body);
   const bibEntries = files["references.bib"] ? parseBibTeX(files["references.bib"]) : [];
   const bibByKey = new Map(bibEntries.map((e) => [e.key, e]));
@@ -44,7 +45,6 @@ export function parse(source: string, options?: ParseOptions): Document {
     }
   }
 
-  resolveAssets(body, files, warnings);
   validateRefs(body, warnings);
 
   return {
@@ -332,37 +332,46 @@ function parseList(mappedLines: SourceText[], start: number): { list: BlockNode;
   const startNumMatch = /^\s*(\d+)\./.exec(first);
   const startNum = startNumMatch ? Number(startNumMatch[1]) : undefined;
   const items: ListItemNode[] = [];
+  const indentation = /^ */.exec(first)![0].length;
   let i = start;
 
   while (i < lines.length) {
-    const line = lines[i];
-    if (line.trim() === "") {
-      if (i + 1 < lines.length && isListLine(lines[i + 1])) {
-        i += 1;
-        continue;
-      }
-      break;
-    }
-    if (!isListLine(line)) break;
-    const content = mappedLines[i].replace(/^ {0,3}(?:[-*+]|\d+\.)\s+/, "");
+    const marker = /^( {0,3})([-*+]|\d+\.)\s+/.exec(lines[i]);
+    if (!marker || marker[1].length !== indentation || /^\d/.test(marker[2]) !== ordered) break;
+    const contentIndent = marker[0].length;
+    const content = mappedLines[i].slice(contentIndent);
     const itemLines = [content];
     i += 1;
-    while (
-      i < lines.length &&
-      lines[i].trim() !== "" &&
-      !isListLine(lines[i]) &&
-      !isBlockStart(lines[i])
-    ) {
-      itemLines.push(mappedLines[i].replace(/^ {2,4}/, ""));
+    while (i < lines.length) {
+      if (lines[i].trim() === "") {
+        const next = lines[i + 1];
+        if (next === undefined) break;
+        const nextIndent = /^ */.exec(next)![0].length;
+        if (nextIndent >= contentIndent) {
+          itemLines.push(mappedLines[i].slice(0, 0));
+          i += 1;
+          continue;
+        }
+        if (isListLine(next) && nextIndent === indentation) {
+          i += 1;
+          break;
+        }
+        break;
+      }
+      const indent = /^ */.exec(lines[i])![0].length;
+      if (indent >= contentIndent) itemLines.push(mappedLines[i].slice(contentIndent));
+      else {
+        if (isListLine(lines[i]) || isBlockStart(lines[i])) break;
+        itemLines.push(mappedLines[i]);
+      }
       i += 1;
     }
     const children = parseBlocks(SourceText.join(itemLines, "\n"));
     items.push({
       type: "listItem",
-      children:
-        children.length > 0
-          ? children
-          : [{ type: "paragraph", children: parseMappedInlines(content) }],
+      children: children.length
+        ? children
+        : [{ type: "paragraph", children: parseMappedInlines(content) }],
     });
   }
 
@@ -702,6 +711,10 @@ function parseMappedInlines(input: SourceText): InlineNode[] {
 function findClosing(source: string, from: number, marker: string): number {
   let i = from;
   while (i < source.length) {
+    if (source[i] === "\\" && i + 1 < source.length) {
+      i += 2;
+      continue;
+    }
     if (source.startsWith(marker, i)) return i;
     i += 1;
   }

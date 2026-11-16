@@ -1,10 +1,50 @@
 import { Fragment, isValidElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
 import { parse } from "../src/parse.ts";
 import { render } from "../src/renderer/react.ts";
 
 describe("render", () => {
+  it("renders an optional toggleable contents sidebar linked to unique heading anchors", () => {
+    const ast = parse("## Details\n\n# Overview\n\n## Details\n\n# Named {#custom}\n");
+    const html = renderToStaticMarkup(render(ast, { tableOfContents: true }));
+    expect(html).toContain('aria-label="Table of contents"');
+    expect(html).toContain('aria-expanded="true"');
+    expect(html).toContain("Hide contents");
+    for (const id of ["details", "overview", "details-2", "custom"]) {
+      expect(html).toContain(`href="#${id}"`);
+      expect(html).toContain(`id="${id}"`);
+      expect(html.match(new RegExp(`id="${id}"`, "g"))).toHaveLength(1);
+    }
+  });
+
+  it("omits the sidebar when disabled or when the document has no headings", () => {
+    expect(renderToStaticMarkup(render(parse("# Heading")))).not.toContain("data-toc-layout");
+    expect(renderToStaticMarkup(render(parse("Body"), { tableOfContents: true }))).not.toContain(
+      "data-toc-layout",
+    );
+  });
+
+  it("renders DOI-only metadata as a clickable resolver link", () => {
+    const html = renderToStaticMarkup(render(parse('---\ndoi: "10.1145/3706468.3706491"\n---\n')));
+    expect(html).toContain("<header>");
+    expect(html).toContain('href="https://doi.org/10.1145/3706468.3706491"');
+    expect(html).toContain('target="_blank"');
+    expect(html).toContain('rel="noopener noreferrer"');
+    expect(html).toContain(">10.1145/3706468.3706491</a>");
+  });
+
+  it("encodes DOI URL characters and omits blank DOI metadata", () => {
+    const html = renderToStaticMarkup(
+      render(parse('---\ndoi: "10.1000/example#section?version=1"\n---\n')),
+    );
+    expect(html).toContain('href="https://doi.org/10.1000/example%23section%3Fversion%3D1"');
+    const empty = renderToStaticMarkup(render(parse('---\ndoi: "   "\n---\n')));
+    expect(empty).not.toContain("<header>");
+    expect(empty).not.toContain("doi.org");
+  });
+
   it("returns a react element for simple markdown", () => {
     const tree = render(parse("# testing"));
     expect(isValidElement(tree)).toBe(true);

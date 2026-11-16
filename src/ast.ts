@@ -18,6 +18,7 @@ export type CommentMetadata = {
 export type FrontMatter = {
   comments?: Record<string, CommentMetadata>;
   title?: string;
+  doi?: string;
   authors?: Author[];
   abstract?: string;
   keywords?: string[];

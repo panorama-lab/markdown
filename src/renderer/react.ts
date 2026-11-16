@@ -14,14 +14,20 @@ import type {
 
 import { resolveCitationStyle, type CitationStyle } from "../citation.ts";
 import { collectHeadings, headingSlug, inlineText, type TocEntry } from "./headings.ts";
+import { TableOfContentsLayout } from "./toc-layout.ts";
 
-export function render(ast: Document, options?: RenderOptions): ReactNode {
+export type ReactRenderOptions = RenderOptions & {
+  tableOfContents?: boolean;
+};
+
+export function render(ast: Document, options?: ReactRenderOptions): ReactNode {
   const assets = options?.assets ?? {};
   const reviewMode: ReviewMode = options?.reviewMode ?? "markup";
   const citationStyle = resolveCitationStyle(options?.citationStyle);
   const bibByKey = new Map(ast.bibliography.map((entry) => [entry.key, entry]));
   const footnoteDefs = collectFootnotes(ast.body);
-  const toc = ast.body.some((b) => b.type === "tableOfContents") ? collectHeadings(ast.body) : [];
+  const headingIds = new Map<BlockNode, string>();
+  const toc = collectHeadings(ast.body, headingIds);
   const ctx: Ctx = {
     assets,
     reviewMode,
@@ -30,9 +36,10 @@ export function render(ast: Document, options?: RenderOptions): ReactNode {
     bibByKey,
     toc,
     reviewSeq: 0,
+    headingIds,
   };
 
-  return createElement(
+  const article = createElement(
     "article",
     null,
     renderMeta(ast),
@@ -57,13 +64,18 @@ export function render(ast: Document, options?: RenderOptions): ReactNode {
         )
       : null,
   );
+  return options?.tableOfContents && toc.length
+    ? createElement(TableOfContentsLayout, { entries: toc, children: article })
+    : article;
 }
 
 function renderMeta(ast: Document): ReactNode {
   const meta = ast.meta;
   if (!meta) return null;
+  const doi = meta.doi?.trim();
   const has =
     meta.title ||
+    doi ||
     (meta.authors && meta.authors.length > 0) ||
     meta.abstract ||
     (meta.keywords && meta.keywords.length > 0);
@@ -83,6 +95,22 @@ function renderMeta(ast: Document): ReactNode {
                 `${a.name}${a.corresponding ? "*" : ""}${a.affiliation ? ` (${a.affiliation})` : ""}`,
             )
             .join(", "),
+        )
+      : null,
+    doi
+      ? createElement(
+          "p",
+          { "data-doi": true },
+          "DOI: ",
+          createElement(
+            "a",
+            {
+              href: `https://doi.org/${doi.split("/").map(encodeURIComponent).join("/")}`,
+              target: "_blank",
+              rel: "noopener noreferrer",
+            },
+            doi,
+          ),
         )
       : null,
     meta.abstract
@@ -106,6 +134,7 @@ type Ctx = {
   citationStyle: CitationStyle;
   bibByKey: Map<string, BibEntry>;
   toc: TocEntry[];
+  headingIds: Map<BlockNode, string>;
   reviewSeq: number;
 };
 
@@ -116,7 +145,7 @@ function renderBlock(node: BlockNode, key: number | string, ctx: Ctx): ReactNode
       const tag = `h${level}` as "h1" | "h2" | "h3" | "h4" | "h5" | "h6";
       return createElement(
         tag,
-        { key, id: node.id ?? headingSlug(inlineText(node.children)) },
+        { key, id: ctx.headingIds.get(node) ?? node.id ?? headingSlug(inlineText(node.children)) },
         ...node.children.map((c, i) => renderInline(c, i, ctx)),
       );
     }
@@ -397,7 +426,7 @@ function renderReviewComment(
 function renderTocItems(entries: TocEntry[]): ReactNode[] {
   const items: ReactNode[] = [];
   let i = 0;
-  const depth = entries[0]?.depth ?? 1;
+  const depth = Math.min(...entries.map((entry) => entry.depth));
   while (i < entries.length) {
     const entry = entries[i];
     if (entry.depth < depth) break;

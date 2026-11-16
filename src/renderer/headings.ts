@@ -6,7 +6,7 @@ export type TocEntry = {
   text: string;
 };
 
-export function collectHeadings(body: BlockNode[]): TocEntry[] {
+export function collectHeadings(body: BlockNode[], anchors?: Map<BlockNode, string>): TocEntry[] {
   const entries: TocEntry[] = [];
   const used = new Set<string>();
   const walk = (blocks: BlockNode[]) => {
@@ -21,6 +21,7 @@ export function collectHeadings(body: BlockNode[]): TocEntry[] {
           n += 1;
         }
         used.add(id);
+        anchors?.set(b, id);
         entries.push({ id, depth: b.depth, text });
       }
       if (b.type === "list") {

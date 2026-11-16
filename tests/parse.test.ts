@@ -18,6 +18,7 @@ describe("front matter", () => {
   it("parses title authors abstract keywords", () => {
     const doc = parse(`---
 title: Paper title
+doi: "10.1145/3706468.3706491"
 authors:
   - name: Ada Lovelace
     email: ada@example.com
@@ -35,6 +36,7 @@ keywords:
 `);
     expect(doc.meta).toEqual({
       title: "Paper title",
+      doi: "10.1145/3706468.3706491",
       authors: [
         {
           name: "Ada Lovelace",
@@ -130,6 +132,24 @@ describe("paragraphs and emphasis", () => {
 });
 
 describe("lists", () => {
+  it("preserves nested lists and resumes parent siblings", () => {
+    const doc = parse("- parent\n  - nested\n    3. deep\n    4. next\n  - sibling\n- final\n");
+    const list = doc.body[0];
+    expect(list).toMatchObject({ type: "list", ordered: false });
+    if (list.type !== "list") return;
+    expect(list.children).toHaveLength(2);
+    const nested = list.children[0].children[1];
+    expect(nested).toMatchObject({ type: "list", ordered: false });
+    if (nested.type !== "list") return;
+    expect(nested.children).toHaveLength(2);
+    expect(nested.children[0].children[1]).toMatchObject({
+      type: "list",
+      ordered: true,
+      start: 3,
+      children: [{ type: "listItem" }, { type: "listItem" }],
+    });
+  });
+
   it("parses unordered lists", () => {
     const doc = parse(`- first item
 - second item
@@ -202,6 +222,22 @@ describe("citations and references", () => {
     expect(p.children.filter((c) => c.type === "cite")).toEqual([
       { type: "cite", keys: ["1"] },
       { type: "cite", keys: ["2", "3"] },
+    ]);
+  });
+
+  it("includes citations from referenced table files in reading order", () => {
+    const doc = parse(
+      "::table[Results](src=results.md)\n\nLater :cite[wang2023].\n\n::references\n",
+      {
+        files: {
+          "results.md": "| Source |\n| --- |\n| :cite[wang2024, missing] |\n",
+          "references.bib": bib,
+        },
+      },
+    );
+    expect(doc.bibliography.map((entry) => entry.key)).toEqual(["wang2024", "wang2023"]);
+    expect(doc.warnings).toEqual([
+      { code: "unknown-cite-key", message: "Unknown citation key: missing" },
     ]);
   });
 
@@ -369,5 +405,17 @@ describe("blockquote", () => {
   it("parses block quotes", () => {
     const doc = parse("> quoted line\n");
     expect(doc.body[0]).toMatchObject({ type: "blockquote" });
+  });
+});
+
+it("keeps escaped emphasis delimiters inside formatted text", () => {
+  const doc = parse(String.raw`*\*Observed (O), Reported (R)* and **a \*\* marker**`);
+  expect(doc.body[0]).toEqual({
+    type: "paragraph",
+    children: [
+      { type: "emphasis", children: [{ type: "text", value: "*Observed (O), Reported (R)" }] },
+      { type: "text", value: " and " },
+      { type: "strong", children: [{ type: "text", value: "a ** marker" }] },
+    ],
   });
 });

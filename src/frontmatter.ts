@@ -58,6 +58,7 @@ export function parseYamlObject(source: string): Record<string, unknown> {
 function toFrontMatter(data: Record<string, unknown>): FrontMatter {
   const meta: FrontMatter = {};
   if (typeof data.title === "string") meta.title = data.title;
+  if (typeof data.doi === "string") meta.doi = data.doi;
   if (typeof data.abstract === "string") meta.abstract = data.abstract;
   if (Array.isArray(data.keywords)) {
     meta.keywords = data.keywords.filter((k): k is string => typeof k === "string");

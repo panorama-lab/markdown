@@ -12,7 +12,7 @@ It is designed to be friendly to LLMs while staying simple and comfortable for p
 ## Built on Markdown
 
 - **Standard Markdown** for headings, paragraphs, lists, links, footnotes, and emphasis
-- **YAML front matter** for titles, authors, abstracts, and keywords
+- **YAML front matter** for titles, DOIs, authors, abstracts, and keywords
 - **Citations** via `:cite` and a `::references` block backed by BibTeX
 - **Figures and tables** are imported with directive syntax instead of embedded directly in the Markdown
 - **Cross-references** via `:ref` to labeled sections, figures, and tables
@@ -24,6 +24,16 @@ It is designed to be friendly to LLMs while staying simple and comfortable for p
 The specification is still in progress, but the current format is documented and ready to explore.
 
 Each paper lives in a flat directory of files. The full directory layout and Markdown syntax are defined in **[SPEC.md](SPEC.md)**.
+
+## React renderer
+
+```tsx
+import { render } from "@panorama-lab/markdown/react";
+
+render(document, { assets, tableOfContents: true });
+```
+
+Enable `tableOfContents` to show a sticky sidebar with links to the document’s headings. The HeroUI “Hide contents” / “Show contents” button toggles it, and heading depth controls indentation. Repeated headings receive unique anchors. Documents without headings omit the sidebar. Existing calls without this option keep their article-only layout. The PDF playground enables the sidebar in its Render tab.
 
 ## Typesetting
 
@@ -49,3 +59,5 @@ Open the [demo directory](demo) in the editor to explore a [sample paper](demo/c
 ## License
 
 Apache 2.0
+
+The optional frontmatter field `doi` stores the paper identifier as a string, for example `doi: "10.1145/3706468.3706491"`. The React renderer displays it below the authors as a link to `doi.org`, opening in a new tab.
