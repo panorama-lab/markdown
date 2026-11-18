@@ -193,6 +193,38 @@ Body
     expect(link.props.href).toBe("#ref-smith2024");
   });
 
+  it("renders citations linked to references extracted from PDFs", () => {
+    const ast = parse(
+      "See :cite[ref-3, ref-7], :cite[smith2024a], :cite[verbert2020] and :cite[archive].\n\n::references",
+      {
+        files: {
+          "references.bib": `@misc{ref-3,
+  note = {First numbered reference.}
+}
+@misc{ref-7,
+  note = {Another numbered reference.}
+}
+@misc{smith2024a,
+  note = {Smith, J., & Jones, M. (2024a). A Study.}
+}
+@misc{verbert2020,
+  note = {Verbert, K. et al. 2020. Learning analytics dashboards.}
+}
+@misc{archive,
+  note = {An undated archived report.}
+}`,
+        },
+      },
+    );
+    const html = renderToStaticMarkup(render(ast));
+    expect(html).toContain('<cite>[<a href="#ref-ref-3">3</a>, <a href="#ref-ref-7">7</a>]</cite>');
+    expect(html).toContain('<cite>(<a href="#ref-smith2024a">Smith &amp; Jones, 2024a</a>)</cite>');
+    expect(html).toContain('<cite>(<a href="#ref-verbert2020">Verbert et al., 2020</a>)</cite>');
+    expect(html).toContain('<cite>(<a href="#ref-archive">archive</a>)</cite>');
+    expect(html).toContain('id="ref-ref-3"');
+    expect(html).toContain("First numbered reference.");
+  });
+
   it("renders APA references by default", () => {
     const ast = parse("Text :cite[smith2024].\n\n::references\n", {
       files: {

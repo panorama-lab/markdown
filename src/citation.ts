@@ -70,10 +70,24 @@ export function formatInTextCitation(
   keys: string[],
   lookup: (key: string) => BibEntry | undefined,
 ): CitationSegment[] {
+  const entries = keys.map((key) => ({ key, entry: lookup(key) }));
+  const numbers = entries.map(({ key, entry }) =>
+    unstructuredReference(entry) ? /^ref-(\d+)$/.exec(key)?.[1] : undefined,
+  );
+  if (numbers.length > 0 && numbers.every((number) => number !== undefined)) {
+    return [
+      { text: "[" },
+      ...keys.flatMap((key, index) => [
+        ...(index > 0 ? [{ text: ", " }] : []),
+        { text: numbers[index]!, key },
+      ]),
+      { text: "]" },
+    ];
+  }
   const segments: CitationSegment[] = [{ text: "(" }];
-  keys.forEach((key, index) => {
+  entries.forEach(({ key, entry }, index) => {
     if (index > 0) segments.push({ text: "; " });
-    segments.push({ text: inTextLabel(lookup(key), key), key });
+    segments.push({ text: inTextLabel(entry, key), key });
   });
   segments.push({ text: ")" });
   return segments;
@@ -81,9 +95,34 @@ export function formatInTextCitation(
 
 function inTextLabel(entry: BibEntry | undefined, key: string): string {
   if (!entry) return key;
-  const author = entry.fields.author;
-  const names = author ? splitAuthors(author).map(familyName) : [];
-  const year = yearOf(entry.fields.year);
+  const { author, year: date } = entry.fields;
+  const note = unstructuredReference(entry);
+  if (note) {
+    const source = note.trim();
+    const reference = /^(.+?)\s*\((\d{4}[a-z]?)(?:,[^)]*)?\)\./.exec(source);
+    if (!reference) {
+      const authorFirst = /^([^,.]+),\s*(?:\p{Lu}\.[\s-]*)+(?:(et al\.)\s+)?(\d{4}[a-z]?)\./u.exec(
+        source,
+      );
+      if (!authorFirst) return key;
+      const [, surname, others, year] = authorFirst;
+      return `${surname}${others ? ` ${others}` : ""}, ${year}`;
+    }
+    const [, authors, year] = reference;
+    const names = [...authors!.matchAll(/(?:^|,\s*)(?:&\s*)?([^,]+),\s*(?:\p{Lu}\.[\s-]*)+/gu)].map(
+      (match) => match[1]!.trim(),
+    );
+    return names.length ? authorYearLabel(names, year!) : `${authors}, ${year}`;
+  }
+  return authorYearLabel(author ? splitAuthors(author).map(familyName) : [], yearOf(date));
+}
+
+function unstructuredReference(entry: BibEntry | undefined): string | undefined {
+  const fields = entry?.fields;
+  if (fields && !fields.author && !fields.title && !fields.year) return fields.note;
+}
+
+function authorYearLabel(names: string[], year: string): string {
   if (names.length === 0) return year;
   if (names.length === 1) return `${names[0]}, ${year}`;
   if (names.length === 2) return `${names[0]} & ${names[1]}, ${year}`;
@@ -92,7 +131,8 @@ function inTextLabel(entry: BibEntry | undefined, key: string): string {
 
 export function formatReference(entry: BibEntry): TextRun[] {
   const f = entry.fields;
-  if (f.note && !f.author && !f.title && !f.year) return [{ text: f.note, italic: false }];
+  const note = unstructuredReference(entry);
+  if (note) return [{ text: note, italic: false }];
   const runs: TextRun[] = [];
   const push = (text: string, italic = false) => {
     if (text) runs.push({ text, italic });
