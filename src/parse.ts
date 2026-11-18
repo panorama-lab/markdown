@@ -322,7 +322,10 @@ function isTableLine(line: string): boolean {
 }
 
 function isTableSeparator(line: string): boolean {
-  return /^\s*\|?(?:\s*:?-+:?\s*\|)+\s*:?-+:?\s*\|?\s*$/.test(line);
+  return (
+    /^\s*\|\s*:?-+:?\s*\|\s*$/.test(line) ||
+    /^\s*\|?(?:\s*:?-+:?\s*\|)+\s*:?-+:?\s*\|?\s*$/.test(line)
+  );
 }
 
 function parseList(mappedLines: SourceText[], start: number): { list: BlockNode; next: number } {
@@ -639,6 +642,18 @@ function parseMappedInlines(input: SourceText): InlineNode[] {
           children: parseMappedInlines(input.slice(i + 2, end)),
         });
         i = end + 2;
+        continue;
+      }
+    }
+
+    if (source.startsWith("***", i)) {
+      const end = findClosing(source, i + 3, "***");
+      if (end > i + 3) {
+        nodes.push({
+          type: "strong",
+          children: [{ type: "emphasis", children: parseMappedInlines(input.slice(i + 3, end)) }],
+        });
+        i = end + 3;
         continue;
       }
     }
