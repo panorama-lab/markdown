@@ -2,10 +2,10 @@ import { createElement, useId, useState, type ReactNode } from "react";
 
 import type { TocEntry } from "./headings.ts";
 
-type Props = { entries: TocEntry[]; children: ReactNode };
+type Props = { entries: TocEntry[]; defaultExpanded: boolean; children: ReactNode };
 
-export function TableOfContentsLayout({ entries, children }: Props) {
-  const [expanded, setExpanded] = useState(true);
+export function TableOfContentsLayout({ entries, defaultExpanded, children }: Props) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const sidebarId = useId();
   const depth = Math.min(...entries.map((entry) => entry.depth));
 

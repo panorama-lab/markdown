@@ -17,7 +17,7 @@ import { collectHeadings, headingSlug, inlineText, type TocEntry } from "./headi
 import { TableOfContentsLayout } from "./toc-layout.ts";
 
 export type ReactRenderOptions = RenderOptions & {
-  tableOfContents?: boolean;
+  tableOfContents?: boolean | "collapsed";
 };
 
 export function render(ast: Document, options?: ReactRenderOptions): ReactNode {
@@ -65,7 +65,11 @@ export function render(ast: Document, options?: ReactRenderOptions): ReactNode {
       : null,
   );
   return options?.tableOfContents && toc.length
-    ? createElement(TableOfContentsLayout, { entries: toc, children: article })
+    ? createElement(TableOfContentsLayout, {
+        entries: toc,
+        defaultExpanded: options.tableOfContents !== "collapsed",
+        children: article,
+      })
     : article;
 }
 
