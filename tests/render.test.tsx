@@ -6,6 +6,30 @@ import { parse } from "../src/parse.ts";
 import { render } from "../src/renderer/react.ts";
 
 describe("render", () => {
+  it("links reused footnote labels to their own table's notes and gives each anchor a unique ID", () => {
+    const ast = parse(
+      "::table[First](src=first.md)\n\nText[^tab-a] Missing[^tab-a-2]\n\n[^tab-a]: Document note\n\n::table[Second](src=second.md)",
+      {
+        files: {
+          "first.md":
+            "| Result |\n| --- |\n| First[^tab-a] again[^tab-a] |\n\n[^tab-a]: First table note",
+          "second.md": "| Result |\n| --- |\n| Second[^tab-a] |\n\n[^tab-a]: Second table note",
+        },
+      },
+    );
+    const html = renderToStaticMarkup(render(ast));
+    expect(html).toContain('Text<sup id="fnref-tab-a"><a href="#fn-tab-a">tab-a</a>');
+    expect(html).toContain("Missing<sup>tab-a-2</sup>");
+    expect(html).toContain('First<sup id="fnref-tab-a-2"><a href="#fn-tab-a-2">tab-a</a>');
+    expect(html).toContain('again<sup><a href="#fn-tab-a-2">tab-a</a>');
+    expect(html).toContain('Second<sup id="fnref-tab-a-3"><a href="#fn-tab-a-3">tab-a</a>');
+    expect(html).toContain('<li id="fn-tab-a"><p>Document note</p><a href="#fnref-tab-a">');
+    expect(html).toContain('<li id="fn-tab-a-2"><p>First table note</p><a href="#fnref-tab-a-2">');
+    expect(html).toContain('<li id="fn-tab-a-3"><p>Second table note</p><a href="#fnref-tab-a-3">');
+    const ids = [...html.matchAll(/\bid="(fn(?:ref)?-[^"]+)"/g)].map((match) => match[1]);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
   it("renders an optional toggleable contents sidebar linked to unique heading anchors", () => {
     const ast = parse("## Details\n\n# Overview\n\n## Details\n\n# Named {#custom}\n");
     const html = renderToStaticMarkup(render(ast, { tableOfContents: true }));

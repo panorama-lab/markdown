@@ -18,6 +18,7 @@ import { TableOfContentsLayout } from "./toc-layout.ts";
 
 export type ReactRenderOptions = RenderOptions & {
   tableOfContents?: boolean | "collapsed";
+  scrollableTables?: boolean;
 };
 
 export function render(ast: Document, options?: ReactRenderOptions): ReactNode {
@@ -25,7 +26,7 @@ export function render(ast: Document, options?: ReactRenderOptions): ReactNode {
   const reviewMode: ReviewMode = options?.reviewMode ?? "markup";
   const citationStyle = resolveCitationStyle(options?.citationStyle);
   const bibByKey = new Map(ast.bibliography.map((entry) => [entry.key, entry]));
-  const footnoteDefs = collectFootnotes(ast.body);
+  const { definitions: footnoteDefs, documentScope, tableScopes } = collectFootnotes(ast.body);
   const headingIds = new Map<BlockNode, string>();
   const toc = collectHeadings(ast.body, headingIds);
   const ctx: Ctx = {
@@ -35,8 +36,12 @@ export function render(ast: Document, options?: ReactRenderOptions): ReactNode {
     citationStyle,
     bibByKey,
     toc,
-    reviewSeq: 0,
+    reviewSequence: { next: 0 },
     headingIds,
+    scrollableTables: options?.scrollableTables ?? false,
+    footnoteScope: documentScope,
+    tableScopes,
+    footnoteReferences: new Set(),
   };
 
   const article = createElement(
@@ -52,12 +57,12 @@ export function render(ast: Document, options?: ReactRenderOptions): ReactNode {
           createElement(
             "ol",
             null,
-            ...footnoteDefs.map((def) =>
+            ...footnoteDefs.map(({ node, anchor, scope }) =>
               createElement(
                 "li",
-                { key: def.id, id: `fn-${def.id}` },
-                ...def.children.map((c, i) => renderBlock(c, i, ctx)),
-                createElement("a", { href: `#fnref-${def.id}` }, "↩"),
+                { key: anchor, id: `fn-${anchor}` },
+                ...node.children.map((c, i) => renderBlock(c, i, { ...ctx, footnoteScope: scope })),
+                createElement("a", { href: `#fnref-${anchor}` }, "↩"),
               ),
             ),
           ),
@@ -139,7 +144,11 @@ type Ctx = {
   bibByKey: Map<string, BibEntry>;
   toc: TocEntry[];
   headingIds: Map<BlockNode, string>;
-  reviewSeq: number;
+  reviewSequence: { next: number };
+  scrollableTables: boolean;
+  footnoteScope: FootnoteScope;
+  tableScopes: Map<BlockNode, FootnoteScope>;
+  footnoteReferences: Set<string>;
 };
 
 function renderBlock(node: BlockNode, key: number | string, ctx: Ctx): ReactNode {
@@ -199,17 +208,23 @@ function renderBlock(node: BlockNode, key: number | string, ctx: Ctx): ReactNode
           : null,
       );
     }
-    case "tableDirective":
+    case "tableDirective": {
+      const tableCtx = { ...ctx, footnoteScope: ctx.tableScopes.get(node) ?? ctx.footnoteScope };
       return createElement(
         "figure",
         { key, id: node.id, "data-table": true },
         node.body
-          ? createElement(Fragment, null, ...node.body.map((c, i) => renderBlock(c, i, ctx)))
+          ? createElement(Fragment, null, ...node.body.map((c, i) => renderBlock(c, i, tableCtx)))
           : null,
-        createElement("figcaption", null, ...node.caption.map((c, i) => renderInline(c, i, ctx))),
+        createElement(
+          "figcaption",
+          null,
+          ...node.caption.map((c, i) => renderInline(c, i, tableCtx)),
+        ),
       );
-    case "table":
-      return createElement(
+    }
+    case "table": {
+      const table = createElement(
         "table",
         { key },
         createElement("thead", null, renderTableRow(node.header, true, ctx)),
@@ -219,6 +234,14 @@ function renderBlock(node: BlockNode, key: number | string, ctx: Ctx): ReactNode
           ...node.rows.map((row, i) => renderTableRow(row, false, ctx, i)),
         ),
       );
+      return ctx.scrollableTables
+        ? createElement(
+            "div",
+            { key, tabIndex: 0, role: "region", "aria-label": "Table", "data-table-scroll": true },
+            table,
+          )
+        : table;
+    }
     case "references":
       return createElement(
         "section",
@@ -307,20 +330,50 @@ function renderInline(node: InlineNode, key: number | string, ctx: Ctx): ReactNo
     }
     case "ref":
       return createElement("a", { key, href: node.id ? `#${node.id}` : undefined }, node.label);
-    case "footnoteRef":
+    case "footnoteRef": {
+      let scope: FootnoteScope | undefined = ctx.footnoteScope;
+      let anchor: string | undefined;
+      while (scope && anchor === undefined) {
+        anchor = scope.anchors.get(node.id);
+        scope = scope.parent;
+      }
+      if (anchor === undefined) return createElement("sup", { key }, node.id);
+      const firstReference = !ctx.footnoteReferences.has(anchor);
+      ctx.footnoteReferences.add(anchor);
       return createElement(
         "sup",
-        { key, id: `fnref-${node.id}` },
-        createElement("a", { href: `#fn-${node.id}` }, node.id),
+        { key, id: firstReference ? `fnref-${anchor}` : undefined },
+        createElement("a", { href: `#fn-${anchor}` }, node.id),
       );
+    }
     case "addition":
-      return renderReviewAddition(node, key, ctx, node.review?.id ?? String(ctx.reviewSeq++));
+      return renderReviewAddition(
+        node,
+        key,
+        ctx,
+        node.review?.id ?? String(ctx.reviewSequence.next++),
+      );
     case "deletion":
-      return renderReviewDeletion(node, key, ctx, node.review?.id ?? String(ctx.reviewSeq++));
+      return renderReviewDeletion(
+        node,
+        key,
+        ctx,
+        node.review?.id ?? String(ctx.reviewSequence.next++),
+      );
     case "substitution":
-      return renderReviewSubstitution(node, key, ctx, node.review?.id ?? String(ctx.reviewSeq++));
+      return renderReviewSubstitution(
+        node,
+        key,
+        ctx,
+        node.review?.id ?? String(ctx.reviewSequence.next++),
+      );
     case "comment":
-      return renderReviewComment(node, key, ctx, node.review?.id ?? String(ctx.reviewSeq++));
+      return renderReviewComment(
+        node,
+        key,
+        ctx,
+        node.review?.id ?? String(ctx.reviewSequence.next++),
+      );
     default:
       return null;
   }
@@ -450,18 +503,51 @@ function renderTocItems(entries: TocEntry[]): ReactNode[] {
   return items;
 }
 
-function collectFootnotes(body: BlockNode[]): Extract<BlockNode, { type: "footnoteDefinition" }>[] {
-  const defs: Extract<BlockNode, { type: "footnoteDefinition" }>[] = [];
-  const walk = (blocks: BlockNode[]) => {
+type FootnoteScope = {
+  anchors: Map<string, string>;
+  parent?: FootnoteScope;
+};
+
+function collectFootnotes(body: BlockNode[]) {
+  const documentScope: FootnoteScope = { anchors: new Map() };
+  const tableScopes = new Map<BlockNode, FootnoteScope>();
+  const notes: {
+    node: Extract<BlockNode, { type: "footnoteDefinition" }>;
+    scope: FootnoteScope;
+  }[] = [];
+  const walk = (blocks: BlockNode[], scope: FootnoteScope) => {
     for (const b of blocks) {
-      if (b.type === "footnoteDefinition") defs.push(b);
+      if (b.type === "footnoteDefinition") notes.push({ node: b, scope });
       if (b.type === "list") {
-        for (const item of b.children) walk(item.children);
+        for (const item of b.children) walk(item.children, scope);
       }
-      if (b.type === "blockquote") walk(b.children);
-      if (b.type === "tableDirective" && b.body) walk(b.body);
+      if (b.type === "blockquote") walk(b.children, scope);
+      if (b.type === "tableDirective" && b.body) {
+        const tableScope: FootnoteScope = { anchors: new Map(), parent: scope };
+        tableScopes.set(b, tableScope);
+        walk(b.body, tableScope);
+      }
     }
   };
-  walk(body);
-  return defs;
+  walk(body, documentScope);
+
+  const labels = new Set(notes.map(({ node }) => node.id));
+  const documentLabels = new Set(
+    notes.filter(({ scope }) => scope === documentScope).map(({ node }) => node.id),
+  );
+  const used = new Set<string>();
+  const definitions = notes.map(({ node, scope }) => {
+    let anchor = node.id;
+    if (used.has(anchor) || (scope !== documentScope && documentLabels.has(anchor))) {
+      let suffix = 2;
+      do {
+        anchor = `${node.id}-${suffix++}`;
+      } while (used.has(anchor) || labels.has(anchor));
+    }
+    used.add(anchor);
+    if (!scope.anchors.has(node.id)) scope.anchors.set(node.id, anchor);
+    return { node, scope, anchor };
+  });
+
+  return { definitions, documentScope, tableScopes };
 }
