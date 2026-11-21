@@ -1,6 +1,14 @@
-import type { ReactElement, ReactNode } from "react";
+import type { ComponentProps, ReactElement, ReactNode } from "react";
 
-import { Document as PdfDocument, Image, Link, Page, Text, View } from "@react-pdf/renderer";
+import {
+  Document as PdfDocument,
+  Canvas,
+  Image,
+  Link,
+  Page,
+  Text,
+  View,
+} from "@react-pdf/renderer";
 import { createElement, Fragment } from "react";
 
 import type {
@@ -15,8 +23,19 @@ import type {
 
 import { INCH, resolveFontFamily, resolveMargin, resolvePageSize } from "../styles.ts";
 import { collectHeadings, headingSlug, inlineText, type TocEntry } from "./headings.ts";
+import {
+  formulaDimensions,
+  prepareInlineMath,
+  typesetDisplayMath,
+  type DisplayFormula,
+  type FormulaSize,
+  type InlineFormula,
+} from "./pdf-math.ts";
 
 type ResolvedStyle = {
+  inlineMath: Map<string, InlineFormula>;
+  displayMath: Map<string, DisplayFormula | undefined>;
+  width: number;
   assets: Record<string, string>;
   reviewMode: ReviewMode;
   bibliography: Document["bibliography"];
@@ -43,15 +62,36 @@ type LayoutItem = {
   node: ReactNode;
 };
 
-export function render(ast: Document, options?: RenderOptions): ReactElement {
+export function render(
+  ast: Document,
+  options?: RenderOptions,
+): ReactElement<ComponentProps<typeof PdfDocument>> {
+  return renderDocument(ast, resolveStyle(ast, options));
+}
+
+export async function renderAsync(
+  ast: Document,
+  options?: RenderOptions,
+): Promise<ReactElement<ComponentProps<typeof PdfDocument>>> {
   const style = resolveStyle(ast, options);
+  style.inlineMath = await prepareInlineMath(ast.body, style.fontSize);
+  return renderDocument(ast, style);
+}
+
+function renderDocument(
+  ast: Document,
+  style: ResolvedStyle,
+): ReactElement<ComponentProps<typeof PdfDocument>> {
   if (style.columns > 1) {
     return renderMultiColumn(ast, style);
   }
   return renderSingleColumn(ast, style);
 }
 
-function renderSingleColumn(ast: Document, style: ResolvedStyle): ReactElement {
+function renderSingleColumn(
+  ast: Document,
+  style: ResolvedStyle,
+): ReactElement<ComponentProps<typeof PdfDocument>> {
   const footnoteDefs = collectFootnotes(ast.body);
 
   return createElement(
@@ -75,7 +115,10 @@ function renderSingleColumn(ast: Document, style: ResolvedStyle): ReactElement {
   );
 }
 
-function renderMultiColumn(ast: Document, style: ResolvedStyle): ReactElement {
+function renderMultiColumn(
+  ast: Document,
+  style: ResolvedStyle,
+): ReactElement<ComponentProps<typeof PdfDocument>> {
   const page = resolvePageSize(style.pageSize);
   const contentWidth = page.width - style.margin.left - style.margin.right;
   const contentHeight = page.height - style.margin.top - style.margin.bottom;
@@ -153,12 +196,22 @@ function pageStyle(style: ResolvedStyle) {
 
 function resolveStyle(ast: Document, options?: RenderOptions): ResolvedStyle {
   const fontSize = options?.fontSize ?? 12;
+  const pageSize = options?.pageSize ?? "LETTER";
+  const margin = resolveMargin(options?.margin ?? 1);
+  const columns = Math.max(1, Math.floor(options?.columns ?? 1));
+  const columnGap = (options?.columnGap ?? 0.25) * INCH;
+  const width =
+    (resolvePageSize(pageSize).width - margin.left - margin.right - (columns - 1) * columnGap) /
+    columns;
   return {
+    inlineMath: new Map(),
+    displayMath: new Map(),
+    width,
     assets: options?.assets ?? {},
     reviewMode: options?.reviewMode ?? "accepted",
     bibliography: ast.bibliography,
-    pageSize: options?.pageSize ?? "LETTER",
-    margin: resolveMargin(options?.margin ?? 1),
+    pageSize,
+    margin,
     fontFamily: options?.fontFamily ?? "Times-Roman",
     fontSize,
     lineHeight: options?.lineHeight ?? 2,
@@ -167,8 +220,8 @@ function resolveStyle(ast: Document, options?: RenderOptions): ResolvedStyle {
     titleAlign: options?.titleAlign ?? "center",
     titleFontSize: options?.titleFontSize ?? fontSize,
     keywordsLabel: options?.keywordsLabel ?? "Keywords",
-    columns: Math.max(1, Math.floor(options?.columns ?? 1)),
-    columnGap: (options?.columnGap ?? 0.25) * INCH,
+    columns,
+    columnGap,
     headings: options?.headings ?? {},
     toc: collectHeadings(ast.body),
   };
@@ -460,7 +513,7 @@ function estimateBlockHeight(node: BlockNode, style: ResolvedStyle, columnWidth:
       );
     }
     case "paragraph":
-      return estimateTextHeight(inlineText(node.children), style, columnWidth) + line * 0.15;
+      return estimateInlineHeight(node.children, style, columnWidth) + line * 0.15;
     case "list": {
       let height = line / 2;
       for (const item of node.children) {
@@ -481,6 +534,18 @@ function estimateBlockHeight(node: BlockNode, style: ResolvedStyle, columnWidth:
           0,
         ) + line
       );
+    case "displayMath": {
+      const formula = displayFormula(node.value, style);
+      const width = formulaAreaWidth(node.number, style, columnWidth);
+      return (
+        (formula
+          ? Math.max(
+              formulaDimensions(formula, style.fontSize, width).height,
+              node.number ? line : 0,
+            )
+          : estimateTextHeight(node.value, style, width)) + line
+      );
+    }
     case "code": {
       const lines = node.value.split("\n").length;
       return lines * (style.fontSize - 1) * 1.4 + style.fontSize * 2 + line / 2;
@@ -496,7 +561,26 @@ function estimateBlockHeight(node: BlockNode, style: ResolvedStyle, columnWidth:
       return bodyHeight + line * 2;
     }
     case "table":
-      return (1 + node.rows.length) * (style.fontSize + 8) + line;
+      return [node.header, ...node.rows].reduce((height, row) => {
+        const cellWidth = Math.max(1, columnWidth / row.children.length - 4);
+        const cellHeight = Math.max(
+          0,
+          ...row.children.map((cell) => {
+            const fontSize = style.fontSize - 1;
+            const measured = inlineFormulaMetrics(cell.children, style, cellWidth, fontSize);
+            return measured
+              ? estimateInlineHeight(
+                  cell.children,
+                  { ...style, lineHeight: 1.4 },
+                  cellWidth,
+                  fontSize,
+                  measured,
+                )
+              : 0;
+          }),
+        );
+        return height + Math.max(style.fontSize + 8, cellHeight + 4.5);
+      }, line);
     case "references": {
       let height = line * 2;
       for (const entry of style.bibliography) {
@@ -519,6 +603,46 @@ function estimateBlockHeight(node: BlockNode, style: ResolvedStyle, columnWidth:
     default:
       return line;
   }
+}
+
+function inlineFormulaMetrics(
+  nodes: InlineNode[],
+  style: ResolvedStyle,
+  width: number,
+  fontSize: number,
+) {
+  let measured: FormulaSize | undefined;
+  let textWidth = 0;
+  function visit(items: InlineNode[]) {
+    for (const item of items) {
+      const formula = item.type === "inlineMath" ? style.inlineMath.get(item.value) : undefined;
+      if (formula) {
+        measured ??= { width: 0, height: 0 };
+        const size = formulaDimensions(formula, fontSize, width);
+        measured.width += size.width;
+        measured.height = Math.max(measured.height, size.height);
+      } else if ("children" in item) {
+        visit(item.children);
+      } else {
+        textWidth += (inlineText([item]).length * fontSize) / 2;
+      }
+    }
+  }
+  visit(nodes);
+  if (measured) measured.width += textWidth;
+  return measured;
+}
+
+function estimateInlineHeight(
+  nodes: InlineNode[],
+  style: ResolvedStyle,
+  width: number,
+  fontSize = style.fontSize,
+  metrics = inlineFormulaMetrics(nodes, style, width, fontSize),
+) {
+  if (!metrics) return estimateTextHeight(inlineText(nodes), style, width, fontSize);
+  const lines = Math.max(1, Math.ceil(metrics.width / width));
+  return lines * Math.max(fontSize * style.lineHeight * 1.15, metrics.height + fontSize * 0.25);
 }
 
 function estimateTextHeight(
@@ -595,7 +719,13 @@ function renderBlock(node: BlockNode, key: number | string, style: ResolvedStyle
             lineHeight: style.lineHeight,
           },
         },
-        ...node.children.map((c, i) => renderInline(c, i, style)),
+        ...node.children.map((c, i) =>
+          renderInline(c, i, {
+            ...style,
+            fontSize: format.fontSize ?? style.fontSize,
+            width: Math.max(1, style.width - (format.indent ?? 0) * INCH),
+          }),
+        ),
       );
     }
     case "paragraph":
@@ -673,6 +803,30 @@ function renderBlock(node: BlockNode, key: number | string, style: ResolvedStyle
         },
         ...node.children.map((c, i) => renderBlock(c, i, style)),
       );
+    case "displayMath": {
+      const formula = displayFormula(node.value, style);
+      const marginVertical = (style.fontSize * style.lineHeight) / 2;
+      const width = formulaAreaWidth(node.number, style, style.width);
+      const content = formula
+        ? createElement(Canvas, {
+            paint: formula.paint,
+            style: {
+              ...formulaDimensions(formula, style.fontSize, width),
+              alignSelf: "center",
+            },
+          })
+        : createElement(Text, { style: { textAlign: "center", width } }, node.value);
+      return createElement(
+        View,
+        {
+          key,
+          id: node.id,
+          style: { flexDirection: "row", alignItems: "center", marginVertical },
+        },
+        createElement(View, { style: { flex: 1, alignItems: "center" } }, content),
+        node.number ? createElement(Text, null, `(${node.number})`) : null,
+      );
+    }
     case "code":
       return createElement(
         Text,
@@ -875,10 +1029,27 @@ function renderTableRow(
             lineHeight: 1.4,
           },
         },
-        ...cell.children.map((c, j) => renderInline(c, j, style)),
+        ...cell.children.map((c, j) =>
+          renderInline(c, j, {
+            ...style,
+            fontSize: style.fontSize - 1,
+            width: Math.max(1, style.width / row.children.length - 4),
+          }),
+        ),
       ),
     ),
   );
+}
+
+function displayFormula(value: string, style: ResolvedStyle) {
+  if (!style.displayMath.has(value)) {
+    style.displayMath.set(value, typesetDisplayMath(value));
+  }
+  return style.displayMath.get(value);
+}
+
+function formulaAreaWidth(number: string | undefined, style: ResolvedStyle, width: number) {
+  return number ? Math.max(style.fontSize, width - (number.length + 3) * style.fontSize) : width;
 }
 
 function renderInline(node: InlineNode, key: number | string, style: ResolvedStyle): ReactNode {
@@ -903,6 +1074,16 @@ function renderInline(node: InlineNode, key: number | string, style: ResolvedSty
         { key, src: node.url },
         ...node.children.map((c, i) => renderInline(c, i, style)),
       );
+    case "inlineMath": {
+      const formula = style.inlineMath.get(node.value);
+      return formula
+        ? createElement(Image, {
+            key,
+            src: formula.src,
+            style: formulaDimensions(formula, style.fontSize, style.width),
+          })
+        : node.value;
+    }
     case "inlineCode":
       return createElement(
         Text,
@@ -926,7 +1107,9 @@ function renderInline(node: InlineNode, key: number | string, style: ResolvedSty
         "]",
       );
     case "ref":
-      return createElement(Text, { key }, node.label);
+      return node.id
+        ? createElement(Link, { key, src: `#${node.id}` }, node.label)
+        : createElement(Text, { key }, node.label);
     case "footnoteRef":
       return createElement(
         Text,

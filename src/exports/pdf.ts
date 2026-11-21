@@ -1,4 +1,4 @@
-export { render } from "../renderer/pdf.ts";
+export { render, renderAsync } from "../renderer/pdf.ts";
 export {
   ACMStyle,
   APAStyle,

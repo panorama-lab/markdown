@@ -38,6 +38,8 @@ export type {
   FrontMatter,
   HeadingFormat,
   InlineNode,
+  InlineMathNode,
+  DisplayMathNode,
   PageSize,
   PaperMargin,
   ParseOptions,

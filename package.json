@@ -15,6 +15,13 @@
     "dist"
   ],
   "type": "module",
+  "imports": {
+    "#math-image": {
+      "browser": "./src/renderer/math-image.browser.ts",
+      "node": "./src/renderer/math-image.node.ts",
+      "default": "./src/renderer/math-image.browser.ts"
+    }
+  },
   "exports": {
     ".": "./src/exports/index.ts",
     "./pdf": "./src/exports/pdf.ts",
@@ -22,6 +29,13 @@
     "./package.json": "./package.json"
   },
   "publishConfig": {
+    "imports": {
+      "#math-image": {
+        "browser": "./dist/math-image.browser.mjs",
+        "node": "./dist/math-image.node.mjs",
+        "default": "./dist/math-image.browser.mjs"
+      }
+    },
     "exports": {
       ".": "./dist/index.mjs",
       "./pdf": "./dist/pdf.mjs",
@@ -36,6 +50,11 @@
     "test": "vp test",
     "check": "vp check",
     "prepublishOnly": "vp run build"
+  },
+  "dependencies": {
+    "@mathjax/mathjax-tex-font": "catalog:",
+    "@mathjax/src": "catalog:",
+    "@resvg/resvg-js": "catalog:"
   },
   "devDependencies": {
     "@react-pdf/renderer": "catalog:",

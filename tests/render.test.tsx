@@ -8,7 +8,7 @@ import { render } from "../src/renderer/react.ts";
 describe("render", () => {
   it("links reused footnote labels to their own table's notes and gives each anchor a unique ID", () => {
     const ast = parse(
-      "::table[First](src=first.md)\n\nText[^tab-a] Missing[^tab-a-2]\n\n[^tab-a]: Document note\n\n::table[Second](src=second.md)",
+      "::table[First]{src=first.md}\n\nText[^tab-a] Missing[^tab-a-2]\n\n[^tab-a]: Document note\n\n::table[Second]{src=second.md}",
       {
         files: {
           "first.md":
@@ -140,13 +140,13 @@ Body
   });
 
   it("renders figure with asset url", () => {
-    const ast = parse("::figure[Cap](src=figures/a.png)\n");
+    const ast = parse("::figure[Cap]{src=figures/a.png}\n");
     const tree = render(ast, { assets: { "figures/a.png": "blob:fig" } });
     expect(isValidElement(tree)).toBe(true);
   });
 
   it("renders image directive and strikethrough", () => {
-    const ast = parse("::image[](src=img.png)\n\n~~old~~\n");
+    const ast = parse("::image[]{src=img.png}\n\n~~old~~\n");
     const tree = render(ast, { assets: { "img.png": "blob:img" } });
     expect(isValidElement(tree)).toBe(true);
   });
@@ -332,4 +332,22 @@ Body
     ) as { props: { id: string } };
     expect(heading.props.id).toBe("introduction");
   });
+});
+
+it("typesets authored formulas and renders unsupported TeX as readable text", () => {
+  const source = [
+    String.raw`Units :math[\mathrm{cm}^{2}], exponent :math[x^{n+1}], fraction :math[\frac{a}{b}].`,
+    "See :ref[Equation 6]{#eq-6}.",
+    ":::math{#eq-6 number=6}\nE = mc^2\n:::",
+    String.raw`Invalid :math[\undefinedCommand{x}] followed by prose.`,
+  ].join("\n\n");
+  const html = renderToStaticMarkup(render(parse(source)));
+  expect(html.match(/role="math"/g)).toHaveLength(4);
+  expect(html).toContain('data-mml-node="mfrac"');
+  expect(html).toContain('data-mml-node="msup"');
+  expect(html).toContain(String.raw`\undefinedCommand{x}`);
+  expect(html).toContain("followed by prose.");
+  expect(html).toContain('href="#eq-6">Equation 6</a>');
+  expect(html).toContain('id="eq-6"');
+  expect(html).toContain("<span>(6)</span>");
 });

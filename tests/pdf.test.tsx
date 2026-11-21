@@ -1,8 +1,11 @@
-import { isValidElement } from "react";
+import { renderToBuffer } from "@react-pdf/renderer";
+import { Children, isValidElement } from "react";
 import { describe, expect, it } from "vite-plus/test";
 
 import { parse } from "../src/parse.ts";
-import { render } from "../src/renderer/pdf.ts";
+import { typesetMath } from "../src/renderer/math.ts";
+import { typesetDisplayMath } from "../src/renderer/pdf-math.ts";
+import { render, renderAsync } from "../src/renderer/pdf.ts";
 import {
   ACMStyle,
   APAStyle,
@@ -13,6 +16,12 @@ import {
   resolveMargin,
   resolvePdfStyle,
 } from "../src/styles.ts";
+
+it("keeps both sides of an inline equation in one SVG", () => {
+  const equation = typesetMath("1=2", false);
+  expect(equation?.markup).toContain('data-c="3D"');
+  expect(equation?.markup).toContain('data-c="32"');
+});
 
 describe("APAStyle", () => {
   it("has APA paper layout defaults", () => {
@@ -153,7 +162,7 @@ ${paragraphs}
       IEEEStyle,
     );
     expect(isValidElement(tree)).toBe(true);
-    expect(tree.props.children.length).toBeGreaterThan(1);
+    expect(Children.count(tree.props.children)).toBeGreaterThan(1);
   });
 
   it("renders with custom margins and heading format", () => {
@@ -203,4 +212,31 @@ Hello.
     );
     expect(isValidElement(tree)).toBe(true);
   });
+});
+
+it("exports inline formulas as PDF text attachments and display formulas as vectors", async () => {
+  const ast = parse(
+    [
+      String.raw`Units :math[\mathrm{cm}^{2}], exponent :math[x^{n+1}], fraction :math[\frac{a}{b}].`,
+      "See :ref[Equation 6]{#eq-6}.",
+      ":::math{#eq-6 number=6}\nE = mc^2\n:::",
+      "| A | B |\n| --- | --- |\n| :math[x^{n+1}] | :math[y^{2}] |",
+    ].join("\n\n"),
+  );
+  const pdf = await renderToBuffer(await renderAsync(ast, { columns: 2 }));
+  const output = pdf.toString("latin1");
+  expect(output).toContain("%PDF");
+  expect(output).toContain("/S /GoTo");
+  expect(output).toContain("(eq-6)");
+  expect(output.match(/\/Subtype \/Image/g)?.length).toBeGreaterThanOrEqual(4);
+});
+
+it("keeps tall matrix delimiters in the PDF vector drawing", () => {
+  const formula = typesetDisplayMath(String.raw`\begin{pmatrix}1 \\ 2 \\ 3 \\ 4 \\ 5\end{pmatrix}`);
+  expect(formula?.paint).toBeTypeOf("function");
+});
+
+it("draws a double-struck indicator as a PDF vector", () => {
+  const formula = typesetDisplayMath("\\mathbb{1}_{i}");
+  expect(formula?.paint).toBeTypeOf("function");
 });

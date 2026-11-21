@@ -227,7 +227,7 @@ describe("citations and references", () => {
 
   it("includes citations from referenced table files in reading order", () => {
     const doc = parse(
-      "::table[Results](src=results.md)\n\nLater :cite[wang2023].\n\n::references\n",
+      "::table[Results]{src=results.md}\n\nLater :cite[wang2023].\n\n::references\n",
       {
         files: {
           "results.md": "| Source |\n| --- |\n| :cite[wang2024, missing] |\n",
@@ -308,7 +308,7 @@ describe("table of contents", () => {
 
 describe("figures and tables", () => {
   it("parses figure with caption src and id", () => {
-    const doc = parse("::figure[System overview](src=figures/system.png){#fig-system}\n", {
+    const doc = parse("::figure[System overview]{#fig-system src=figures/system.png}\n", {
       files: { "figures/system.png": "data:image/png;base64,abc" },
     });
     expect(doc.body[0]).toMatchObject({
@@ -320,7 +320,7 @@ describe("figures and tables", () => {
   });
 
   it("parses image directive as figure", () => {
-    const doc = parse("::image[](src=image_p12_0.png)\n", {
+    const doc = parse("::image[]{src=image_p12_0.png}\n", {
       files: { "image_p12_0.png": "data:image/png;base64,abc" },
     });
     expect(doc.body[0]).toMatchObject({
@@ -331,18 +331,18 @@ describe("figures and tables", () => {
   });
 
   it("does not hang on unknown directives", () => {
-    const doc = parse("::unknown[x](src=a)\n\nAfter\n");
+    const doc = parse("::unknown[x]{src=a}\n\nAfter\n");
     expect(doc.body.length).toBeGreaterThanOrEqual(2);
     expect(doc.body[0]).toMatchObject({ type: "paragraph" });
   });
 
   it("warns on missing figure asset", () => {
-    const doc = parse("::figure[Cap](src=figures/missing.png)\n");
+    const doc = parse("::figure[Cap]{src=figures/missing.png}\n");
     expect(doc.warnings.some((w) => w.code === "missing-asset")).toBe(true);
   });
 
   it("parses table directive and resolves body from files", () => {
-    const doc = parse("::table[Results](src=tables/results.md){#tab-results}\n", {
+    const doc = parse("::table[Results]{#tab-results src=tables/results.md}\n", {
       files: {
         "tables/results.md": `| a | b |
 | --- | --- |
@@ -418,4 +418,121 @@ it("keeps escaped emphasis delimiters inside formatted text", () => {
       { type: "strong", children: [{ type: "text", value: "a ** marker" }] },
     ],
   });
+});
+
+it("preserves TeX in formulas, table cells, and captions", () => {
+  const ast =
+    parse(String.raw`Measured in :math[\mathrm{cm}^{2}] using :math[x^{n+1}] and :math[\frac{a}{b}].
+
+:::math{#eq-6 number=6}
+ a_{i} &= b_{i} \\
+ c &= d
+:::
+
+| Formula | Value |
+| --- | --- |
+| :math[|x|] | :math[a\mid b] |
+
+::figure[Value :math[x_{[i]}]]{src=p.png}
+`);
+  expect(ast.body).toMatchObject([
+    {
+      type: "paragraph",
+      children: [
+        { type: "text", value: "Measured in " },
+        { type: "inlineMath", value: String.raw`\mathrm{cm}^{2}` },
+        { type: "text", value: " using " },
+        { type: "inlineMath", value: "x^{n+1}" },
+        { type: "text", value: " and " },
+        { type: "inlineMath", value: String.raw`\frac{a}{b}` },
+        { type: "text", value: "." },
+      ],
+    },
+    { type: "displayMath", id: "eq-6", number: "6", value: " a_{i} &= b_{i} \\\\\n c &= d" },
+    {
+      type: "table",
+      rows: [
+        {
+          children: [
+            { children: [{ type: "inlineMath", value: "|x|" }] },
+            { children: [{ type: "inlineMath", value: String.raw`a\mid b` }] },
+          ],
+        },
+      ],
+    },
+    {
+      type: "figure",
+      caption: [
+        { type: "text", value: "Value " },
+        { type: "inlineMath", value: "x_{[i]}" },
+      ],
+    },
+  ]);
+});
+
+it("keeps currency, escaped dollars, code, and unclosed delimiters readable", () => {
+  const ast = parse("Pay $5 or $10. \\$x, `$x$` and x²[^a]. It's $x\n\ny$ or $z.\n\n$$\nunclosed");
+  expect(ast.body).toMatchObject([
+    {
+      type: "paragraph",
+      children: [
+        { type: "text", value: "Pay $5 or $10. $x, " },
+        { type: "inlineCode", value: "$x$" },
+        { type: "text", value: " and x²" },
+        { type: "footnoteRef", id: "a" },
+        { type: "text", value: ". It's $x" },
+      ],
+    },
+    { type: "paragraph", children: [{ type: "text", value: "y$ or $z." }] },
+    { type: "paragraph", children: [{ type: "text", value: "$$ unclosed" }] },
+  ]);
+});
+
+it("resolves equation references and preserves printed labels independently of IDs", () => {
+  const ast = parse(
+    "See :ref[Equation A.1]{#eq-a-1} or :ref{#eq-a-1}. :ref[Missing]{#eq-2}\n\n" +
+      '::::math{id=eq-a-1 number="A.1"}\nx = y\n:::\nz = w\n::::',
+  );
+  expect(ast.body).toEqual([
+    {
+      type: "paragraph",
+      children: [
+        { type: "text", value: "See " },
+        { type: "ref", id: "eq-a-1", label: "Equation A.1" },
+        { type: "text", value: " or " },
+        { type: "ref", id: "eq-a-1", label: "eq-a-1" },
+        { type: "text", value: ". " },
+        { type: "ref", id: "eq-2", label: "Missing" },
+      ],
+    },
+    { type: "displayMath", id: "eq-a-1", number: "A.1", value: "x = y\n:::\nz = w" },
+  ]);
+  expect(ast.warnings).toEqual([{ code: "unresolved-ref", message: "Unresolved reference: eq-2" }]);
+});
+
+it("keeps quoted inline TeX and legacy dollars literal where appropriate", () => {
+  const ast = parse("**:math[`\\left[0,1\\right)`]** $x$ :math[unclosed\n\n$$\ny\n$$");
+  expect(ast.body).toEqual([
+    {
+      type: "paragraph",
+      children: [
+        { type: "strong", children: [{ type: "inlineMath", value: "\\left[0,1\\right)" }] },
+        { type: "text", value: " $x$ :math[unclosed" },
+      ],
+    },
+    { type: "paragraph", children: [{ type: "text", value: "$$ y $$" }] },
+  ]);
+});
+
+it("reads brace attributes with quoted values and optional leaf labels", () => {
+  const ast = parse(
+    '::figure{id=fig-a src="figures/a (1).png"}\n\n::table_of_contents{#toc levels=2}',
+    {
+      files: { "figures/a (1).png": "data:image/png;base64,abc" },
+    },
+  );
+  expect(ast.body).toEqual([
+    { type: "figure", id: "fig-a", src: "figures/a (1).png", caption: [] },
+    { type: "tableOfContents", id: "toc", levels: 2, title: "" },
+  ]);
 });

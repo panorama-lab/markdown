@@ -57,6 +57,7 @@ export function inlineText(nodes: InlineNode[]): string {
         case "deletion":
         case "comment":
           return inlineText(n.children);
+        case "inlineMath":
         case "inlineCode":
           return n.value;
         case "substitution":

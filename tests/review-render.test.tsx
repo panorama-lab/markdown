@@ -27,7 +27,7 @@ describe("review source identities", () => {
   });
 
   it("namespaces external markers without shifting content markers", () => {
-    const source = "::table[Cap](src=table.md)\n\n:delete[body]";
+    const source = "::table[Cap]{src=table.md}\n\n:delete[body]";
     const document = parse(source, { files: { "table.md": ":insert[external]" } });
     const markers = listReviewMarkers(document);
     const html = renderToStaticMarkup(render(document));

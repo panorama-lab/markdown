@@ -58,7 +58,7 @@ describe("source-aware review markers", () => {
     "- :insert[same]\n- :insert[same]",
     "[^a]: :insert[same]\n    :insert[same]",
     "| :insert[same] | :insert[same] |\n| --- | --- |",
-    "::figure[:insert[same] :insert[same]](src=image.png)",
+    "::figure[:insert[same] :insert[same]]{src=image.png}",
     "**:insert[same]** [label :insert[same]](url)",
     "😀 :insert[same]  \r\n:insert[same]",
   ])("preserves offsets through block and inline transformations in %s", (source) => {
@@ -228,7 +228,7 @@ it("avoids existing IDs when adding a thread to an anonymous span", () => {
 
 it("parses annotated figure/table captions and link labels as their enclosing nodes", () => {
   const document = parse(
-    "::figure[:comment[Caption]{#c1}](src=image.png)\n\n::table[:insert[Title]{#c2}](src=table.md)\n\n[Read :comment[label]{#c3}](https://example.com)",
+    "::figure[:comment[Caption]{#c1}]{src=image.png}\n\n::table[:insert[Title]{#c2}]{src=table.md}\n\n[Read :comment[label]{#c3}](https://example.com)",
   );
   expect(document.body.map((node) => node.type)).toEqual(["figure", "tableDirective", "paragraph"]);
   expect(document.body[2]).toMatchObject({

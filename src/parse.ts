@@ -84,6 +84,26 @@ function parseBlocks(source: SourceText): BlockNode[] {
       continue;
     }
 
+    const mathOpen = /^ {0,3}(:{3,})math(?=\{|[ \t]*$)/.exec(line);
+    if (mathOpen) {
+      const tail = line.slice(mathOpen[0].length).trimEnd();
+      const attributes = tail ? readDirectiveAttrs(tail, 0) : undefined;
+      if (!tail || attributes?.end === tail.length) {
+        const close = new RegExp(`^ {0,3}:{${mathOpen[1].length},}[ \\t]*$`);
+        let end = i + 1;
+        while (end < lines.length && !close.test(lines[end])) end++;
+        const { id, number } = attributes?.values ?? {};
+        blocks.push({
+          type: "displayMath",
+          value: lines.slice(i + 1, end).join("\n"),
+          ...(id ? { id } : {}),
+          ...(number ? { number } : {}),
+        });
+        i = end + 1;
+        continue;
+      }
+    }
+
     const headingMatch = /^(#{1,6})\s+(.+?)\s*$/.exec(line);
     if (headingMatch) {
       const depth = headingMatch[1].length as 1 | 2 | 3 | 4 | 5 | 6;
@@ -127,68 +147,34 @@ function parseBlocks(source: SourceText): BlockNode[] {
       continue;
     }
 
-    const figureMatch =
-      /^::(?:figure|image)\[(.*)\](?:\(([^)]*)\))?(?:\{#([a-zA-Z0-9_-]+)\})?\s*$/.exec(line.trim());
-    if (figureMatch) {
-      const attrs = parseAttrs(figureMatch[2] ?? "");
-      blocks.push({
-        type: "figure",
-        caption: parseMappedInlines(
-          mappedLines[i].slice(
-            line.indexOf("[") + 1,
-            line.indexOf("[") + 1 + figureMatch[1].length,
-          ),
-        ),
-        src: attrs.src ?? "",
-        id: figureMatch[3],
-      });
-      i += 1;
-      continue;
+    const leaf = /^[ \t]*::(figure|image|table|table_of_contents)(?=\[|\{|[ \t]*$)/.exec(line);
+    if (leaf) {
+      const args = readDirectiveArgs(line, leaf[0].length);
+      if (args && !line.slice(args.end).trim()) {
+        const { src = "", id, levels = "3" } = args.attributes;
+        const label = mappedLines[i].slice(args.labelStart, args.labelEnd);
+        if (leaf[1] === "table_of_contents") {
+          const depth = Number(levels);
+          blocks.push({
+            type: "tableOfContents",
+            title: label.value.replace(/\\(.)/g, "$1"),
+            levels: Number.isFinite(depth) ? Math.min(6, Math.max(1, Math.floor(depth))) : 3,
+            id,
+          });
+        } else {
+          blocks.push({
+            type: leaf[1] === "table" ? "tableDirective" : "figure",
+            caption: parseMappedInlines(label),
+            src,
+            id,
+          });
+        }
+        i++;
+        continue;
+      }
     }
 
-    const tableDirMatch = /^::table\[(.*)\](?:\(([^)]*)\))?(?:\{#([a-zA-Z0-9_-]+)\})?\s*$/.exec(
-      line.trim(),
-    );
-    if (tableDirMatch) {
-      const attrs = parseAttrs(tableDirMatch[2] ?? "");
-      blocks.push({
-        type: "tableDirective",
-        caption: parseMappedInlines(
-          mappedLines[i].slice(
-            line.indexOf("[") + 1,
-            line.indexOf("[") + 1 + tableDirMatch[1].length,
-          ),
-        ),
-        src: attrs.src ?? "",
-        id: tableDirMatch[3],
-      });
-      i += 1;
-      continue;
-    }
-
-    const tocMatch =
-      /^::table_of_contents(?:\s*\[([^\]]*)\])?(?:\s*\(([^)]*)\))?(?:\s*\{([^}]*)\})?\s*$/.exec(
-        line.trim(),
-      );
-    if (tocMatch) {
-      const tail = tocMatch[3];
-      const idMatch = /^#([a-zA-Z0-9_-]+)$/.exec(tail ?? "");
-      const attrs = {
-        ...parseAttrs(tocMatch[2] ?? ""),
-        ...(tail && !idMatch ? parseAttrs(tail) : {}),
-      };
-      const levels = Number(attrs.levels ?? "3");
-      blocks.push({
-        type: "tableOfContents",
-        title: tocMatch[1] ?? "",
-        levels: Number.isFinite(levels) ? Math.min(6, Math.max(1, Math.floor(levels))) : 3,
-        id: idMatch?.[1],
-      });
-      i += 1;
-      continue;
-    }
-
-    if (/^::/.test(line.trim())) {
+    if (line.trimStart().startsWith("::")) {
       blocks.push({
         type: "paragraph",
         children: parseMappedInlines(mappedLines[i].trim()),
@@ -293,23 +279,11 @@ function isBlockStart(line: string): boolean {
     /^(#{1,6})\s+/.test(line) ||
     /^ {0,3}```/.test(line) ||
     /^ {0,3}(-{3,}|\*{3,}|_{3,})\s*$/.test(line) ||
-    isDirectiveLine(line) ||
+    line.trimStart().startsWith("::") ||
     /^\[\^[^\]]+\]:/.test(line) ||
     /^ {0,3}>/.test(line) ||
     isListLine(line) ||
     (isTableLine(line) && false)
-  );
-}
-
-function isDirectiveLine(line: string): boolean {
-  const t = line.trim();
-  return (
-    /^::pagebreak\s*$/.test(t) ||
-    /^::references\s*$/.test(t) ||
-    /^::table_of_contents(?:\s*\[[^\]]*\])?(?:\s*\([^)]*\))?(?:\s*\{[^}]*\})?\s*$/.test(t) ||
-    /^::(?:figure|image)\[[^\]]*\]/.test(t) ||
-    /^::table\[[^\]]*\]/.test(t) ||
-    /^::/.test(t)
   );
 }
 
@@ -412,7 +386,24 @@ function parseTableRow(line: SourceText): TableRowNode {
   let s = line.trim();
   if (s.value.startsWith("|")) s = s.slice(1);
   if (s.value.endsWith("|")) s = s.slice(0, -1);
-  const cells = s.split("|").map((c) => c.trim());
+  const cells: SourceText[] = [];
+  let start = 0;
+  for (let index = 0; index < s.value.length; index++) {
+    if (s.value[index] === "\\") {
+      index++;
+      continue;
+    }
+    const math = readInlineMath(s.value, index);
+    if (math) {
+      index = math.end;
+      continue;
+    }
+    if (s.value[index] === "|") {
+      cells.push(s.slice(start, index).trim());
+      start = index + 1;
+    }
+  }
+  cells.push(s.slice(start).trim());
   const children: TableCellNode[] = cells.map((c) => ({
     type: "tableCell",
     children: parseMappedInlines(c),
@@ -420,18 +411,40 @@ function parseTableRow(line: SourceText): TableRowNode {
   return { type: "tableRow", children };
 }
 
-function parseAttrs(raw: string): Record<string, string> {
-  const result: Record<string, string> = {};
-  if (!raw.trim()) return result;
-  const re = /([a-zA-Z_][\w-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s,]+))/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(raw))) {
-    result[m[1]] = m[2] ?? m[3] ?? m[4] ?? "";
+function readDirectiveAttrs(source: string, start: number) {
+  if (source[start] !== "{") return;
+  const values: Record<string, string> = Object.create(null);
+  const attribute =
+    /[ \t]*(?:([#.])([\w-]+)|([a-zA-Z_][\w-]*)(?:[ \t]*=[ \t]*(?:"((?:\\.|[^"\\\r\n])*)"|'((?:\\.|[^'\\\r\n])*)'|([^\s"'=<>`{}]+)))?)(?=[ \t}]|$)/y;
+  let end = start + 1;
+  while (end < source.length) {
+    const close = /^[ \t]*\}/.exec(source.slice(end));
+    if (close) return { values, end: end + close[0].length };
+    attribute.lastIndex = end;
+    const match = attribute.exec(source);
+    if (!match) return;
+    const [, shorthand, token, key, double, single, bare] = match;
+    if (shorthand === "#") values.id = token;
+    else if (shorthand === ".") values.class = [values.class, token].filter(Boolean).join(" ");
+    else values[key] = (double ?? single ?? bare ?? "").replace(/\\([\\"'])/g, "$1");
+    end = attribute.lastIndex;
   }
-  if (!result.src && raw.includes("=") === false && raw.trim()) {
-    result.src = raw.trim();
-  }
-  return result;
+}
+
+function readDirectiveArgs(source: string, start: number) {
+  const hasLabel = source[start] === "[";
+  const labelStart = start + Number(hasLabel);
+  const labelEnd = hasLabel ? findBracketEnd(source, labelStart) : start;
+  if (labelEnd < 0) return;
+  const end = labelEnd + Number(hasLabel);
+  const attributes = readDirectiveAttrs(source, end);
+  if (source[end] === "{" && !attributes) return;
+  return {
+    labelStart,
+    labelEnd,
+    attributes: attributes?.values ?? {},
+    end: attributes?.end ?? end,
+  };
 }
 
 export function parseInlines(source: string): InlineNode[] {
@@ -477,6 +490,11 @@ function findBracketEnd(source: string, contentStart: number): number {
         continue;
       }
     }
+    const math = readInlineMath(source, cursor);
+    if (math) {
+      cursor = math.end + 1;
+      continue;
+    }
     if (source[cursor] === "[") depth += 1;
     if (source[cursor] === "]") {
       depth -= 1;
@@ -485,6 +503,39 @@ function findBracketEnd(source: string, contentStart: number): number {
     cursor += 1;
   }
   return -1;
+}
+
+function readInlineMath(source: string, start: number) {
+  if (!source.startsWith(":math[", start)) return;
+  const contentStart = start + ":math[".length;
+  const fence = /^`+/.exec(source.slice(contentStart))?.[0];
+  if (fence) {
+    const fences = /`+/g;
+    fences.lastIndex = contentStart + fence.length;
+    for (let close = fences.exec(source); close; close = fences.exec(source)) {
+      if (close[0] !== fence || source[fences.lastIndex] !== "]") continue;
+      const valueStart = contentStart + fence.length;
+      const valueEnd = close.index;
+      const value = source.slice(valueStart, valueEnd);
+      if (!value || /[\r\n]/.test(value)) return;
+      // A single padding space allows literal backticks adjacent to the fence.
+      const padded = /^ .* $/.test(value);
+      return {
+        end: fences.lastIndex,
+        valueStart: valueStart + Number(padded),
+        valueEnd: valueEnd - Number(padded),
+      };
+    }
+    return;
+  }
+
+  let depth = 1;
+  for (let end = contentStart; end < source.length && !/[\r\n]/.test(source[end]); end++) {
+    if (source[end] === "\\" && !/[\r\n]/.test(source[end + 1] ?? "")) end++;
+    else if (source[end] === "[") depth++;
+    else if (source[end] === "]" && --depth === 0)
+      return end > contentStart ? { end, valueStart: contentStart, valueEnd: end } : undefined;
+  }
 }
 
 function parseMappedInlines(input: SourceText): InlineNode[] {
@@ -524,6 +575,19 @@ function parseMappedInlines(input: SourceText): InlineNode[] {
       }
     }
 
+    const math = readInlineMath(source, i);
+    if (math) {
+      const value = input.original.slice(
+        input.positions[math.valueStart],
+        input.positions[math.valueEnd],
+      );
+      if (!/[\r\n]/.test(value)) {
+        nodes.push({ type: "inlineMath", value });
+        i = math.end + 1;
+        continue;
+      }
+    }
+
     if (source.startsWith(":cite[", i)) {
       const end = source.indexOf("]", i + 6);
       if (end !== -1) {
@@ -550,19 +614,13 @@ function parseMappedInlines(input: SourceText): InlineNode[] {
       }
     }
 
-    if (source.startsWith(":ref[", i)) {
-      const end = source.indexOf("]", i + 5);
-      if (end !== -1) {
-        const label = source.slice(i + 5, end);
-        let id = "";
-        let next = end + 1;
-        const idMatch = /^\{#([a-zA-Z0-9_-]+)\}/.exec(source.slice(next));
-        if (idMatch) {
-          id = idMatch[1];
-          next += idMatch[0].length;
-        }
-        nodes.push({ type: "ref", label, id });
-        i = next;
+    if (source.startsWith(":ref[", i) || source.startsWith(":ref{", i)) {
+      const args = readDirectiveArgs(source, i + ":ref".length);
+      if (args) {
+        const id = args.attributes.id ?? "";
+        const label = source.slice(args.labelStart, args.labelEnd).replace(/\\(.)/g, "$1");
+        nodes.push({ type: "ref", label: label || id, id });
+        i = args.end;
         continue;
       }
     }
@@ -699,7 +757,6 @@ function parseMappedInlines(input: SourceText): InlineNode[] {
       if (labelEnd !== -1 && source[labelEnd + 1] === "(") {
         const urlEnd = source.indexOf(")", labelEnd + 2);
         if (urlEnd !== -1) {
-          const label = source.slice(i + 1, labelEnd);
           const urlPart = source.slice(labelEnd + 2, urlEnd);
           const titleMatch = /^(\S+)\s+"([^"]*)"$/.exec(urlPart);
           const url = titleMatch ? titleMatch[1] : urlPart;
@@ -730,6 +787,11 @@ function findClosing(source: string, from: number, marker: string): number {
       i += 2;
       continue;
     }
+    const math = readInlineMath(source, i);
+    if (math) {
+      i = math.end + 1;
+      continue;
+    }
     if (source.startsWith(marker, i)) return i;
     i += 1;
   }
@@ -757,7 +819,7 @@ function parseBibTeX(source: string): BibEntry[] {
 
 export function walkBlocks(
   blocks: BlockNode[],
-  visit: (node: BlockNode | InlineNode) => void,
+  visit: (node: BlockNode | InlineNode | ListItemNode) => void,
 ): void {
   for (const block of blocks) {
     visit(block);
@@ -795,7 +857,10 @@ export function walkBlocks(
   }
 }
 
-function walkInlines(nodes: InlineNode[], visit: (node: BlockNode | InlineNode) => void): void {
+function walkInlines(
+  nodes: InlineNode[],
+  visit: (node: BlockNode | InlineNode | ListItemNode) => void,
+): void {
   for (const node of nodes) {
     visit(node);
     switch (node.type) {
@@ -861,6 +926,7 @@ function validateRefs(body: BlockNode[], warnings: Warning[]): void {
     if (node.type === "heading" && node.id) ids.add(node.id);
     if (node.type === "figure" && node.id) ids.add(node.id);
     if (node.type === "tableDirective" && node.id) ids.add(node.id);
+    if (node.type === "displayMath" && node.id) ids.add(node.id);
   });
   walkBlocks(body, (node) => {
     if (node.type === "ref" && node.id && !ids.has(node.id)) {

@@ -67,6 +67,26 @@ _italic text_ (or `*italic text*`)
 
 End a line with two spaces to force a hard line break. Use a backslash to escape a literal character that would otherwise start markup, such as `\_` or `\*`.
 
+## Formulas
+
+Use `:math[TeX]` for inline formulas and a `:::math` container for display formulas. The optional attributes `#id` and `number` identify a display and print its source number in parentheses.
+
+```md
+Let :math[\bar{\phi}] be the mean threshold. See :ref[Equation 6]{#eq-6}.
+
+:::math{#eq-6 number=6}
+\beta > \frac{\gamma \cdot \bar{\phi}}{k - \bar{\phi} \cdot \langle k \rangle}
+:::
+```
+
+Inline TeX occupies a single source line. Nested square brackets are allowed. To preserve an unmatched bracket, quote the payload with matching runs of backticks, as in `` :math[`\left[0,1\right)`] ``. Inline formulas work in table cells and captions, including TeX that contains a literal pipe. Dollar signs are ordinary text.
+
+Display bodies preserve multiline TeX. Open with at least three colons and close with the same number or more. Without a closing fence, the display continues to the end of its enclosing block or document. Numbers are strings, so labels like `6a` and `A.1` are preserved. The AST stores raw TeX in `value` on `inlineMath` and `displayMath`, with optional `id` and `number` on display nodes.
+
+React and PDF export use MathJax. Unsupported TeX remains readable as source. PDF export uses vector paths for supported displays and raster attachments for inline formulas. Call `renderAsync` from `@panorama-lab/markdown/pdf` to prepare inline formulas before export. The synchronous PDF `render` entry point renders inline TeX as source text.
+
+PDF import recovers selected formulas from their glyph layout, including scripts, fractions, roots, summation limits, vectors, and multiline displays. When the importer recognizes a numbered equation, it assigns an `eq-` ID and links matching equation references with an unambiguous target. Equations with ambiguous layout can remain readable text.
+
 ## Lists
 
 Use standard Markdown syntax for unordered and ordered lists:
@@ -123,24 +143,28 @@ Insert an explicit page break with this leaf directive:
 ::pagebreak
 ```
 
+## Directive attributes
+
+Generic directives use square brackets for labels and braces for attributes. Place them immediately after the directive name and each other. Use `{#id}` or `{id=value}` to set an ID. Separate attributes with spaces and quote values containing spaces.
+
 ## Figures
 
 Figures are leaf directives. The bracket text supplies the caption, and the `src` attribute points to the image asset:
 
 ```md
-::figure[System overview](src=system.png)
+::figure[System overview]{src=system.png}
 ```
 
 `::image` is accepted as an alias for `::figure`. Assign stable ids to figures that will be cross-referenced:
 
 ```md
-::figure[System overview](src=system.png){#fig-system}
+::figure[System overview]{#fig-system src=system.png}
 ```
 
 which is short for
 
 ```md
-::figure[System overview](src=system.png){id=fig-system}
+::figure[System overview]{id=fig-system src=system.png}
 ```
 
 ## Tables
@@ -148,7 +172,7 @@ which is short for
 Tables follow the same pattern as figures. The bracket text supplies the caption, and `src` points to table content &mdash; typically a Markdown or HTML fragment:
 
 ```md
-::table[Experimental results](src=results.md){#tab-results}
+::table[Experimental results]{#tab-results src=results.md}
 ```
 
 The referenced content is parsed as Markdown, so pipe tables, headings, and paragraphs all work inside it. Inline pipe tables in the body are also supported:
@@ -162,14 +186,15 @@ The referenced content is parsed as Markdown, so pipe tables, headings, and para
 
 ## Cross-references
 
-Link to a labeled section, figure, or table with `:ref`. The bracket text is the display label, and the `{#id}` attribute identifies the target:
+Link to a labeled section, figure, table, or equation with `:ref`. The bracket text supplies the display label. If the label is omitted, the ID is displayed.
 
 ```md
 See :ref[Introduction]{#introduction} for the problem setup.
-As shown in :ref{#fig-system}, the pipeline has three stages.
+As shown in :ref[Figure 1]{#fig-system}, the pipeline has three stages.
+See :ref[Equation 6]{#eq-6} for the threshold.
 ```
 
-The target heading, figure, or table must carry the matching id.
+The target must carry the matching ID.
 
 ## Table of contents
 

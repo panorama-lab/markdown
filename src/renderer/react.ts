@@ -14,6 +14,7 @@ import type {
 
 import { resolveCitationStyle, type CitationStyle } from "../citation.ts";
 import { collectHeadings, headingSlug, inlineText, type TocEntry } from "./headings.ts";
+import { typesetMath } from "./math.ts";
 import { TableOfContentsLayout } from "./toc-layout.ts";
 
 export type ReactRenderOptions = RenderOptions & {
@@ -180,6 +181,19 @@ function renderBlock(node: BlockNode, key: number | string, ctx: Ctx): ReactNode
         { key },
         ...node.children.map((c, i) => renderBlock(c, i, ctx)),
       );
+    case "displayMath":
+      return createElement(
+        "div",
+        {
+          key,
+          id: node.id,
+          style: node.number
+            ? { display: "grid", gridTemplateColumns: "1fr auto", alignItems: "center", gap: "1em" }
+            : undefined,
+        },
+        renderMath(node.value, true, key),
+        node.number ? createElement("span", null, `(${node.number})`) : null,
+      );
     case "code":
       return createElement(
         "pre",
@@ -281,6 +295,19 @@ function renderBlock(node: BlockNode, key: number | string, ctx: Ctx): ReactNode
   }
 }
 
+function renderMath(value: string, display: boolean, key: number | string): ReactNode {
+  const formula = typesetMath(value, display);
+  const tag = display ? "div" : "span";
+  if (!formula) return createElement(tag, { key }, value);
+  return createElement(tag, {
+    key,
+    role: "math",
+    "aria-label": value,
+    style: display ? { overflowX: "auto", textAlign: "center", marginBlock: "1em" } : undefined,
+    dangerouslySetInnerHTML: { __html: formula.markup },
+  });
+}
+
 function renderTableRow(row: TableRowNode, header: boolean, ctx: Ctx, key?: number): ReactNode {
   const tag = header ? "th" : "td";
   return createElement(
@@ -310,6 +337,8 @@ function renderInline(node: InlineNode, key: number | string, ctx: Ctx): ReactNo
         { key, href: node.url, title: node.title },
         ...node.children.map((c, i) => renderInline(c, i, ctx)),
       );
+    case "inlineMath":
+      return renderMath(node.value, false, key);
     case "inlineCode":
       return createElement("code", { key }, node.value);
     case "strikethrough":

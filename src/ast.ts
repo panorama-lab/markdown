@@ -112,7 +112,20 @@ export type CommentNode = {
   children: InlineNode[];
 };
 
+export type InlineMathNode = {
+  type: "inlineMath";
+  value: string;
+};
+
+export type DisplayMathNode = {
+  type: "displayMath";
+  value: string;
+  id?: string;
+  number?: string;
+};
+
 export type InlineNode =
+  | InlineMathNode
   | TextNode
   | StrongNode
   | EmphasisNode
@@ -220,6 +233,7 @@ export type FootnoteDefinitionNode = {
 };
 
 export type BlockNode =
+  | DisplayMathNode
   | HeadingNode
   | ParagraphNode
   | ListNode
