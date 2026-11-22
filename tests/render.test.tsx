@@ -50,6 +50,23 @@ describe("render", () => {
     );
   });
 
+  it("typesets heading math in the sidebar and in-document contents links", () => {
+    const ast = parse(
+      String.raw`## Adjustment for *:math[B_{\mathrm{crit}}(L)]* {#training}
+
+::table_of_contents[Contents]{levels=2}
+`,
+    );
+    const html = renderToStaticMarkup(render(ast, { tableOfContents: true }));
+    const links = [...html.matchAll(/<a href="#training"[^>]*>(.*?)<\/a>/g)];
+
+    expect(links).toHaveLength(2);
+    for (const [, label] of links) {
+      expect(label).toMatch(/^Adjustment for <span role="math"[^>]*><svg\b/);
+    }
+    expect(html).toContain('<h3 id="training">');
+  });
+
   it("renders DOI-only metadata as a clickable resolver link", () => {
     const html = renderToStaticMarkup(render(parse('---\ndoi: "10.1145/3706468.3706491"\n---\n')));
     expect(html).toContain("<header>");

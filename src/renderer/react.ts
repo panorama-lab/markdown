@@ -73,6 +73,7 @@ export function render(ast: Document, options?: ReactRenderOptions): ReactNode {
   return options?.tableOfContents && toc.length
     ? createElement(TableOfContentsLayout, {
         entries: toc,
+        renderLabel: renderTocLabel,
         defaultExpanded: options.tableOfContents !== "collapsed",
         children: article,
       })
@@ -509,6 +510,12 @@ function renderReviewComment(
   );
 }
 
+function renderTocLabel(entry: TocEntry): ReactNode {
+  return entry.label.map((part, i) =>
+    part.type === "inlineMath" ? renderMath(part.value, false, i) : part.value,
+  );
+}
+
 function renderTocItems(entries: TocEntry[]): ReactNode[] {
   const items: ReactNode[] = [];
   let i = 0;
@@ -523,7 +530,7 @@ function renderTocItems(entries: TocEntry[]): ReactNode[] {
       createElement(
         "li",
         { key: entry.id },
-        createElement("a", { href: `#${entry.id}` }, entry.text),
+        createElement("a", { href: `#${entry.id}` }, renderTocLabel(entry)),
         children.length > 0 ? createElement("ul", null, ...renderTocItems(children)) : null,
       ),
     );
