@@ -7,6 +7,7 @@ import { TeX } from "@mathjax/src/js/input/tex.js";
 import "@mathjax/src/js/input/tex/ams/AmsConfiguration.js";
 import "@mathjax/src/js/input/tex/base/BaseConfiguration.js";
 import "@mathjax/src/js/input/tex/boldsymbol/BoldsymbolConfiguration.js";
+import "@mathjax/src/js/input/tex/cancel/CancelConfiguration.js";
 import { mathjax } from "@mathjax/src/js/mathjax.js";
 import { SVG } from "@mathjax/src/js/output/svg.js";
 
@@ -14,7 +15,7 @@ const adaptor = liteAdaptor();
 RegisterHTMLHandler(adaptor);
 const math = mathjax.document("", {
   InputJax: new TeX({
-    packages: ["base", "ams", "boldsymbol"],
+    packages: ["base", "ams", "boldsymbol", "cancel"],
     maxBuffer: 4096,
     tags: "ams",
   }),
