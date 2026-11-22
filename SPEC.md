@@ -39,6 +39,10 @@ keywords:
 ## Headings
 
 Use ATX headings. The number of `#` characters defines the heading level.
+Heading text must omit numeric section prefixes such as `1.` and `2.3`. When
+importing a numbered document, use the source numbering to determine heading
+levels and resolve section references where applicable. Preserve numbers that
+are part of the title itself, such as `2024 results`.
 
 ```md
 # Introduction
