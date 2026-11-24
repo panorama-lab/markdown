@@ -6,6 +6,7 @@ import type {
   BibEntry,
   BlockNode,
   Document,
+  FrontMatter,
   InlineNode,
   RenderOptions,
   ReviewMode,
@@ -20,6 +21,7 @@ import { TableOfContentsLayout } from "./toc-layout.ts";
 export type ReactRenderOptions = RenderOptions & {
   tableOfContents?: boolean | "collapsed";
   scrollableTables?: boolean;
+  renderHeader?: (meta: FrontMatter | null) => ReactNode;
 };
 
 export function render(ast: Document, options?: ReactRenderOptions): ReactNode {
@@ -48,7 +50,7 @@ export function render(ast: Document, options?: ReactRenderOptions): ReactNode {
   const article = createElement(
     "article",
     null,
-    renderMeta(ast),
+    options?.renderHeader ? options.renderHeader(ast.meta) : renderMeta(ast),
     ...ast.body.map((node, i) => renderBlock(node, i, ctx)),
     footnoteDefs.length > 0
       ? createElement(

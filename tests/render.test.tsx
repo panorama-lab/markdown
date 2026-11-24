@@ -76,6 +76,19 @@ describe("render", () => {
     expect(html).toContain(">10.1145/3706468.3706491</a>");
   });
 
+  it("replaces the default metadata inside the article with a custom header", () => {
+    const ast = parse("---\ntitle: Paper title\n---\n\n# Introduction");
+    const html = renderToStaticMarkup(
+      render(ast, {
+        tableOfContents: true,
+        renderHeader: (meta) => <header>Reading {meta?.title}</header>,
+      }),
+    );
+    expect(html).toContain("<article><header>Reading Paper title</header>");
+    expect(html).toContain('href="#introduction"');
+    expect(html).not.toContain("<h1>Paper title</h1>");
+  });
+
   it("encodes DOI URL characters and omits blank DOI metadata", () => {
     const html = renderToStaticMarkup(
       render(parse('---\ndoi: "10.1000/example#section?version=1"\n---\n')),
