@@ -18,8 +18,13 @@ import { collectHeadings, headingSlug, inlineText, type TocEntry } from "./headi
 import { typesetMath } from "./math.ts";
 import { TableOfContentsLayout } from "./toc-layout.ts";
 
+export type TableOfContentsLink = Pick<TocEntry, "id" | "depth"> & { label: ReactNode };
+
 export type ReactRenderOptions = RenderOptions & {
-  tableOfContents?: boolean | "collapsed";
+  tableOfContents?:
+    | boolean
+    | "collapsed"
+    | ((links: TableOfContentsLink[], article: ReactNode) => ReactNode);
   scrollableTables?: boolean;
   renderHeader?: (meta: FrontMatter | null) => ReactNode;
 };
@@ -72,14 +77,20 @@ export function render(ast: Document, options?: ReactRenderOptions): ReactNode {
         )
       : null,
   );
-  return options?.tableOfContents && toc.length
-    ? createElement(TableOfContentsLayout, {
-        entries: toc,
-        renderLabel: renderTocLabel,
-        defaultExpanded: options.tableOfContents !== "collapsed",
-        children: article,
-      })
-    : article;
+  const contents = options?.tableOfContents;
+  if (!contents || !toc.length) return article;
+  if (typeof contents === "function") {
+    return contents(
+      toc.map((entry) => ({ id: entry.id, depth: entry.depth, label: renderTocLabel(entry) })),
+      article,
+    );
+  }
+  return createElement(TableOfContentsLayout, {
+    entries: toc,
+    renderLabel: renderTocLabel,
+    defaultExpanded: contents !== "collapsed",
+    children: article,
+  });
 }
 
 function renderMeta(ast: Document): ReactNode {

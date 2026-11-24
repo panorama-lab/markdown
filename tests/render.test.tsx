@@ -50,6 +50,29 @@ describe("render", () => {
     );
   });
 
+  it("provides unique heading anchors and rendered labels to custom contents layouts", () => {
+    const ast = parse("# Methods\n\n## `Setup`\n\n# Methods");
+    const html = renderToStaticMarkup(
+      render(ast, {
+        tableOfContents: (links, article) => (
+          <Fragment>
+            <nav>
+              {links.map(({ id, depth, label }) => (
+                <a key={id} href={`#${id}`} data-depth={depth}>
+                  {label}
+                </a>
+              ))}
+            </nav>
+            {article}
+          </Fragment>
+        ),
+      }),
+    );
+    expect(html).toContain('<a href="#setup" data-depth="2">Setup</a>');
+    expect(html).toContain('<a href="#methods-2" data-depth="1">Methods</a>');
+    expect(html).toContain('<h2 id="methods-2">Methods</h2>');
+  });
+
   it("typesets heading math in the sidebar and in-document contents links", () => {
     const ast = parse(
       String.raw`## Adjustment for *:math[B_{\mathrm{crit}}(L)]* {#training}
