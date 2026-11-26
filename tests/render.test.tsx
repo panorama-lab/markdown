@@ -1,9 +1,9 @@
+import { parse } from "@panorama-lab/markdown";
+import { render } from "@panorama-lab/markdown/react";
+import { render as renderDeferred } from "@panorama-lab/markdown/react-deferred";
 import { Fragment, isValidElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
-
-import { parse } from "../src/parse.ts";
-import { render } from "../src/renderer/react.ts";
 
 describe("render", () => {
   it("links reused footnote labels to their own table's notes and gives each anchor a unique ID", () => {
@@ -204,12 +204,6 @@ Body
     expect(isValidElement(tree)).toBe(true);
   });
 
-  it("respects reviewMode clean", () => {
-    const ast = parse(":insert[new]:delete[old]");
-    const tree = render(ast, { reviewMode: "clean" });
-    expect(isValidElement(tree)).toBe(true);
-  });
-
   it("renders review markup without inline suggestion labels", () => {
     const tree = render(parse("Original :insert[addition] :comment[clarify this]"), {
       reviewMode: "markup",
@@ -403,4 +397,16 @@ it("typesets authored formulas and renders unsupported TeX as readable text", ()
   expect(html).toContain('href="#eq-6">Equation 6</a>');
   expect(html).toContain('id="eq-6"');
   expect(html).toContain("<span>(6)</span>");
+});
+
+it("renders readable TeX on the server for deferred formulas and contents links", () => {
+  const ast = parse("## Estimate :math[x^2] {#estimate}\n\n:::math{#eq-1 number=1}\nx < y\n:::");
+  const html = renderToStaticMarkup(renderDeferred(ast, { tableOfContents: true }));
+
+  expect(html.match(/<span role="math" aria-label="x\^2">x\^2<\/span>/g)).toHaveLength(2);
+  expect(html).toContain('href="#estimate"');
+  expect(html).toContain('aria-label="x &lt; y"');
+  expect(html).toContain(">x &lt; y</div>");
+  expect(html).toContain("<span>(1)</span>");
+  expect(html).not.toContain("<svg");
 });

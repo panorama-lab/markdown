@@ -26,6 +26,7 @@
     ".": "./src/exports/index.ts",
     "./pdf": "./src/exports/pdf.ts",
     "./react": "./src/exports/react.ts",
+    "./react-deferred": "./src/exports/react-deferred.ts",
     "./package.json": "./package.json"
   },
   "publishConfig": {
@@ -40,6 +41,7 @@
       ".": "./dist/index.mjs",
       "./pdf": "./dist/pdf.mjs",
       "./react": "./dist/react.mjs",
+      "./react-deferred": "./dist/react-deferred.mjs",
       "./package.json": "./package.json"
     },
     "access": "public"

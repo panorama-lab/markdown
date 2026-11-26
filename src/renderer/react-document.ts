@@ -15,7 +15,6 @@ import type {
 
 import { resolveCitationStyle, type CitationStyle } from "../citation.ts";
 import { collectHeadings, headingSlug, inlineText, type TocEntry } from "./headings.ts";
-import { typesetMath } from "./math.ts";
 import { TableOfContentsLayout } from "./toc-layout.ts";
 
 export type TableOfContentsLink = Pick<TocEntry, "id" | "depth"> & { label: ReactNode };
@@ -29,7 +28,13 @@ export type ReactRenderOptions = RenderOptions & {
   renderHeader?: (meta: FrontMatter | null) => ReactNode;
 };
 
-export function render(ast: Document, options?: ReactRenderOptions): ReactNode {
+export type RenderMath = (value: string, display: boolean, key: number | string) => ReactNode;
+
+export function render(
+  ast: Document,
+  options: ReactRenderOptions | undefined,
+  renderMath: RenderMath,
+): ReactNode {
   const assets = options?.assets ?? {};
   const reviewMode: ReviewMode = options?.reviewMode ?? "markup";
   const citationStyle = resolveCitationStyle(options?.citationStyle);
@@ -39,6 +44,7 @@ export function render(ast: Document, options?: ReactRenderOptions): ReactNode {
   const toc = collectHeadings(ast.body, headingIds);
   const ctx: Ctx = {
     assets,
+    renderMath,
     reviewMode,
     bibliography: ast.bibliography,
     citationStyle,
@@ -81,13 +87,17 @@ export function render(ast: Document, options?: ReactRenderOptions): ReactNode {
   if (!contents || !toc.length) return article;
   if (typeof contents === "function") {
     return contents(
-      toc.map((entry) => ({ id: entry.id, depth: entry.depth, label: renderTocLabel(entry) })),
+      toc.map((entry) => ({
+        id: entry.id,
+        depth: entry.depth,
+        label: renderTocLabel(entry, renderMath),
+      })),
       article,
     );
   }
   return createElement(TableOfContentsLayout, {
     entries: toc,
-    renderLabel: renderTocLabel,
+    renderLabel: (entry: TocEntry) => renderTocLabel(entry, renderMath),
     defaultExpanded: contents !== "collapsed",
     children: article,
   });
@@ -152,6 +162,7 @@ function renderMeta(ast: Document): ReactNode {
 }
 
 type Ctx = {
+  renderMath: RenderMath;
   assets: Record<string, string>;
   reviewMode: ReviewMode;
   bibliography: Document["bibliography"];
@@ -205,7 +216,7 @@ function renderBlock(node: BlockNode, key: number | string, ctx: Ctx): ReactNode
             ? { display: "grid", gridTemplateColumns: "1fr auto", alignItems: "center", gap: "1em" }
             : undefined,
         },
-        renderMath(node.value, true, key),
+        ctx.renderMath(node.value, true, key),
         node.number ? createElement("span", null, `(${node.number})`) : null,
       );
     case "code":
@@ -299,7 +310,9 @@ function renderBlock(node: BlockNode, key: number | string, ctx: Ctx): ReactNode
         "nav",
         { key, id: node.id, "data-toc": true },
         node.title ? createElement("h2", null, node.title) : null,
-        entries.length > 0 ? createElement("ul", null, ...renderTocItems(entries)) : null,
+        entries.length > 0
+          ? createElement("ul", null, ...renderTocItems(entries, ctx.renderMath))
+          : null,
       );
     }
     case "footnoteDefinition":
@@ -307,19 +320,6 @@ function renderBlock(node: BlockNode, key: number | string, ctx: Ctx): ReactNode
     default:
       return null;
   }
-}
-
-function renderMath(value: string, display: boolean, key: number | string): ReactNode {
-  const formula = typesetMath(value, display);
-  const tag = display ? "div" : "span";
-  if (!formula) return createElement(tag, { key }, value);
-  return createElement(tag, {
-    key,
-    role: "math",
-    "aria-label": value,
-    style: display ? { overflowX: "auto", textAlign: "center", marginBlock: "1em" } : undefined,
-    dangerouslySetInnerHTML: { __html: formula.markup },
-  });
 }
 
 function renderTableRow(row: TableRowNode, header: boolean, ctx: Ctx, key?: number): ReactNode {
@@ -352,7 +352,7 @@ function renderInline(node: InlineNode, key: number | string, ctx: Ctx): ReactNo
         ...node.children.map((c, i) => renderInline(c, i, ctx)),
       );
     case "inlineMath":
-      return renderMath(node.value, false, key);
+      return ctx.renderMath(node.value, false, key);
     case "inlineCode":
       return createElement("code", { key }, node.value);
     case "strikethrough":
@@ -523,13 +523,13 @@ function renderReviewComment(
   );
 }
 
-function renderTocLabel(entry: TocEntry): ReactNode {
+function renderTocLabel(entry: TocEntry, renderMath: RenderMath): ReactNode {
   return entry.label.map((part, i) =>
     part.type === "inlineMath" ? renderMath(part.value, false, i) : part.value,
   );
 }
 
-function renderTocItems(entries: TocEntry[]): ReactNode[] {
+function renderTocItems(entries: TocEntry[], renderMath: RenderMath): ReactNode[] {
   const items: ReactNode[] = [];
   let i = 0;
   const depth = Math.min(...entries.map((entry) => entry.depth));
@@ -543,8 +543,10 @@ function renderTocItems(entries: TocEntry[]): ReactNode[] {
       createElement(
         "li",
         { key: entry.id },
-        createElement("a", { href: `#${entry.id}` }, renderTocLabel(entry)),
-        children.length > 0 ? createElement("ul", null, ...renderTocItems(children)) : null,
+        createElement("a", { href: `#${entry.id}` }, renderTocLabel(entry, renderMath)),
+        children.length > 0
+          ? createElement("ul", null, ...renderTocItems(children, renderMath))
+          : null,
       ),
     );
     i = j;

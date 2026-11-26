@@ -1,9 +1,7 @@
+import { listReviewMarkers, parse } from "@panorama-lab/markdown";
+import { render } from "@panorama-lab/markdown/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
-
-import { parse } from "../src/parse.ts";
-import { render } from "../src/renderer/react.ts";
-import { listReviewMarkers } from "../src/review.ts";
 
 describe("review source identities", () => {
   it.each([
